@@ -328,10 +328,7 @@ function RoomCreated() {
                 <>
                   {/* Bouton Jouer/Pause */}
                   <button
-                    onClick={() => {
-                      // TODO: Implémenter la logique de play/pause
-                      console.log('Toggle play/pause');
-                    }}
+                    onClick={isGameActive ? pauseGame : startGame}
                     className="bg-green-500/80 hover:bg-green-600 text-white px-4 py-2 rounded-xl font-semibold transition-all duration-300 flex items-center space-x-2 hover:scale-105"
                   >
                     {isGameActive ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}

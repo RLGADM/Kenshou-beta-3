@@ -90,7 +90,9 @@ export function useRoomUtils() {
   // Vérifier les permissions
   const checkPermissions = (currentUser: User) => {
     const isAdmin = currentUser.isAdmin || false;
-    const canControlGame = isAdmin; // Peut être étendu selon vos règles métier
+    // Considère qu'un joueur non spectateur peut contrôler la partie
+    const isPlayer = (currentUser.team && currentUser.team !== 'spectator') || (currentUser.role && currentUser.role !== 'spectator');
+    const canControlGame = Boolean(isAdmin || isPlayer);
 
     return {
       isAdmin,

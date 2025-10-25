@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: Kenshou-Beta-v2
+    name: Kenshou-Beta-3
     env: node
     buildCommand: cd backend && npm install
     startCommand: cd backend && node src/server.js

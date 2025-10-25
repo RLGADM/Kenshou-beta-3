@@ -23,13 +23,7 @@ server.listen(PORT, () => {
 });
 
 // --- CORS ---
-const allowedOrigins = [
-  'http://localhost:5173',
-  'https://localhost:5173',
-  'https://kenshou-beta.netlify.app',
-  'https://kenshou-beta-v2.onrender.com',
-  'https://kenshou-b3.netlify.app',
-];
+const allowedOrigins = ['http://localhost:5173', 'https://localhost:5173', 'https://kenshou-b3.netlify.app'];
 
 const io = new Server(server, {
   cors: {

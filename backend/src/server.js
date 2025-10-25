@@ -17,15 +17,7 @@ const server = createServer(app);
 
 //log initialement, mais on va le laisser ici
 // --- CORS & JSON ---
-const allowedOrigins = [
-  'http://localhost:5173',
-  'https://localhost:5173',
-  'http://localhost:5174',
-  'https://localhost:5174',
-  'https://kenshou-beta.netlify.app',
-  'https://kenshou-beta-v2.onrender.com',
-  'https://kenshou-b3.netlify.app',
-];
+const allowedOrigins = ['http://localhost:5173', 'https://localhost:5173', 'https://kenshou-b3.netlify.app'];
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 

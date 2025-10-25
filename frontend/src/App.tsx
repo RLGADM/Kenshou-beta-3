@@ -23,7 +23,7 @@ import KeepAlive from './components/KeepAlive';
 //const serveur
 const SERVER_URL =
   import.meta.env.VITE_SERVER_URL ??
-  (import.meta.env.PROD ? 'https://kensho-hab0.onrender.com' : 'http://localhost:3000');
+  (import.meta.env.PROD ? 'https://kenshou-beta-3.onrender.com' : 'http://localhost:3000');
 //<<import logoUrl from './assets/logo.png';
 
 // Déclaration du main

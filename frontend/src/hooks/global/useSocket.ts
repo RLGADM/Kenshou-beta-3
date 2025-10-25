@@ -3,7 +3,7 @@ import { io, Socket } from 'socket.io-client';
 
 const SERVER_URL =
   import.meta.env.VITE_SERVER_URL ??
-  (import.meta.env.PROD ? 'https://kenshou-beta-v2.https://kenshou-beta-3.onrender.com' : 'http://localhost:3000');
+  (import.meta.env.PROD ? 'https://kenshou-beta-3.onrender.com' : 'http://localhost:3000');
 
 export function useSocket() {
   const [socket, setSocket] = useState<Socket | null>(null);

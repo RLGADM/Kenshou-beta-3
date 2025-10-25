@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: Kenshou-Beta-v2
+    env: node
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && node src/server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 20

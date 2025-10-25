@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Socket.IO Connection</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .connected { background-color: #d4edda; color: #155724; }
+        .disconnected { background-color: #f8d7da; color: #721c24; }
+        .connecting { background-color: #fff3cd; color: #856404; }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
+        .log {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-entry {
+            margin: 2px 0;
+            padding: 2px 5px;
+            border-radius: 2px;
+        }
+        .log-in { background-color: #e3f2fd; }
+        .log-out { background-color: #e8f5e8; }
+        .log-error { background-color: #ffebee; }
+        .log-info { background-color: #fff3e0; }
+        input, select {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test de connexion Socket.IO</h1>
+        
+        <!-- Configuration -->
+        <div>
+            <h3>Configuration</h3>
+            <label>
+                URL du serveur:
+                <input type="text" id="serverUrl" value="https://chatrooms-server.onrender.com" style="width: 300px;">
+            </label>
+            <br>
+            <label>
+                Transport:
+                <select id="transport">
+                    <option value="auto">Auto (websocket, polling)</option>
+                    <option value="websocket">WebSocket uniquement</option>
+                    <option value="polling">Polling uniquement</option>
+                </select>
+            </label>
+            <br>
+            <label>
+                Nom d'utilisateur:
+                <input type="text" id="username" value="TestUser" placeholder="Nom d'utilisateur">
+            </label>
+        </div>
+
+        <!-- Status -->
+        <div id="status" class="status disconnected">Déconnecté</div>
+        
+        <!-- Controls -->
+        <div>
+            <button onclick="connect()">Se connecter</button>
+            <button onclick="disconnect()">Se déconnecter</button>
+            <button onclick="ping()">Ping</button>
+            <button onclick="createRoom()">Créer salon</button>
+            <button onclick="joinTeam()">Rejoindre équipe rouge</button>
+            <button onclick="clearLog()">Effacer log</button>
+        </div>
+
+        <!-- Connection Info -->
+        <div id="connectionInfo" style="margin: 10px 0; padding: 10px; background-color: #f8f9fa; border-radius: 4px;">
+            <strong>Informations de connexion:</strong>
+            <div id="socketId">Socket ID: N/A</div>
+            <div id="transportInfo">Transport: N/A</div>
+            <div id="latency">Latence: N/A</div>
+        </div>
+
+        <!-- Log -->
+        <div>
+            <h3>Log des événements</h3>
+            <div id="log" class="log"></div>
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+        let pingStart = 0;
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logDiv.insertBefore(entry, logDiv.firstChild);
+        }
+
+        function updateStatus(status, className) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = status;
+            statusDiv.className = `status ${className}`;
+        }
+
+        function updateConnectionInfo() {
+            if (socket && socket.connected) {
+                document.getElementById('socketId').textContent = `Socket ID: ${socket.id}`;
+                document.getElementById('transportInfo').textContent = `Transport: ${socket.io.engine.transport.name}`;
+            } else {
+                document.getElementById('socketId').textContent = 'Socket ID: N/A';
+                document.getElementById('transportInfo').textContent = 'Transport: N/A';
+                document.getElementById('latency').textContent = 'Latence: N/A';
+            }
+        }
+
+        function connect() {
+            if (socket && socket.connected) {
+                log('Déjà connecté', 'info');
+                return;
+            }
+
+            const serverUrl = document.getElementById('serverUrl').value;
+            const transport = document.getElementById('transport').value;
+            
+            let transports;
+            switch (transport) {
+                case 'websocket':
+                    transports = ['websocket'];
+                    break;
+                case 'polling':
+                    transports = ['polling'];
+                    break;
+                default:
+                    transports = ['websocket', 'polling'];
+            }
+
+            log(`Tentative de connexion à ${serverUrl} avec transports: ${transports.join(', ')}`, 'info');
+            updateStatus('Connexion en cours...', 'connecting');
+
+            socket = io(serverUrl, {
+                transports: transports,
+                timeout: 20000,
+                reconnection: false // Désactiver la reconnexion automatique pour les tests
+            });
+
+            // Écouter tous les événements entrants
+            socket.onAny((eventName, ...args) => {
+                log(`← ${eventName}: ${JSON.stringify(args)}`, 'in');
+            });
+
+            socket.on('connect', () => {
+                log('✅ Connexion établie', 'info');
+                updateStatus('Connecté', 'connected');
+                updateConnectionInfo();
+            });
+
+            socket.on('disconnect', (reason) => {
+                log(`❌ Déconnexion: ${reason}`, 'error');
+                updateStatus('Déconnecté', 'disconnected');
+                updateConnectionInfo();
+            });
+
+            socket.on('connect_error', (error) => {
+                log(`❌ Erreur de connexion: ${error.message}`, 'error');
+                updateStatus('Erreur de connexion', 'disconnected');
+            });
+
+            socket.on('pong', (data) => {
+                const latency = Date.now() - pingStart;
+                document.getElementById('latency').textContent = `Latence: ${latency}ms`;
+                log(`🏓 Pong reçu (${latency}ms): ${JSON.stringify(data)}`, 'in');
+            });
+
+            socket.on('roomJoined', (room) => {
+                log(`🏠 Salon rejoint: ${room.code}`, 'in');
+            });
+
+            socket.on('teamJoinSuccess', (data) => {
+                log(`👥 Équipe rejointe avec succès: ${data.team} ${data.role}`, 'in');
+            });
+
+            socket.on('teamJoinError', (error) => {
+                log(`❌ Erreur équipe: ${error}`, 'error');
+            });
+
+            socket.on('gameStateUpdate', (gameState) => {
+                log(`🎮 GameState mis à jour: Phase ${gameState.currentPhase}`, 'in');
+            });
+
+            // Intercepter les émissions
+            const originalEmit = socket.emit.bind(socket);
+            socket.emit = function(eventName, ...args) {
+                log(`→ ${eventName}: ${JSON.stringify(args)}`, 'out');
+                return originalEmit(eventName, ...args);
+            };
+        }
+
+        function disconnect() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+                log('Déconnexion manuelle', 'info');
+            }
+        }
+
+        function ping() {
+            if (socket && socket.connected) {
+                pingStart = Date.now();
+                socket.emit('ping');
+            } else {
+                log('❌ Non connecté', 'error');
+            }
+        }
+
+        function createRoom() {
+            if (socket && socket.connected) {
+                const username = document.getElementById('username').value || 'TestUser';
+                socket.emit('createRoom', username);
+            } else {
+                log('❌ Non connecté', 'error');
+            }
+        }
+
+        function joinTeam() {
+            if (socket && socket.connected) {
+                socket.emit('joinTeam', 'red', 'disciple');
+            } else {
+                log('❌ Non connecté', 'error');
+            }
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        // Auto-connect au chargement de la page
+        window.onload = function() {
+            log('Page chargée - Prêt pour les tests', 'info');
+        };
+    </script>
+</body>
+</html>

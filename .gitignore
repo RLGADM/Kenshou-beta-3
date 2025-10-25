@@ -1,0 +1,51 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+pnpm-lock.yaml
+
+# Environnement
+.env
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Angular
+dist/
+out-tsc/
+.angular/
+.angular-cache/
+
+# Logs
+logs/
+*.log
+
+# Coverage
+coverage/
+
+# Build
+/build/
+/tmp/
+
+# Tests
+test-results/
+karma-results/
+
+# Misc
+*.tgz
+*.bak
+*.swp
+*.zip
+
+# Local Netlify folder
+.netlify

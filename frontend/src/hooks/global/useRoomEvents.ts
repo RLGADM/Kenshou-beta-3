@@ -181,23 +181,26 @@ export function useRoomEvents() {
           hasGameStartedRef.current = false;
         }
 
+        // Ne rien annoncer à l’hydratation initiale en phase d’attente
+        if (isInitialHydration && isWaitingPhase) {
+          return { ...prev, gameState };
+        }
+
         if (shouldAnnouncePhase) {
           const isFirstStart = (prevPhase === 0 || isInitialHydration) && nextPhase === 1;
 
           const sysMsg: Message = {
             id: `sys-${Date.now()}-${++msgSeqRef.current}`,
-            username: 'SYSTEM',
+            username: 'Winry',
             message: isFirstStart
               ? 'La partie commence ! GL HF !'
               : nextPhase === 1
                 ? 'Phase 1 - Choisissez votre mot'
                 : nextPhase === 2
                   ? 'Phase 2 - Choisissez vos interdits'
-                  : nextPhase === 3
-                    ? 'Phase 3 - Préparez votre laius !'
-                    : isInitialHydration && isWaitingPhase
-                      ? 'Bienvenue sur Kensho !'
-                      : 'Retour à l’attente',
+                : nextPhase === 3
+                  ? 'Phase 3 - Préparez votre laius !'
+                : 'Retour à l’attente',
             timestamp: new Date(),
           };
 

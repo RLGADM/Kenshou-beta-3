@@ -7,8 +7,7 @@ import { useRoomTeamActions } from './useRoomTeamActions';
 import { useRoomGameActions } from './useRoomGameActions';
 import { useNavigate } from 'react-router-dom';
 import { useSocketContext } from '@/components/SocketContext';
-import { User } from '@/types';
-
+import type { User, Message } from '@/types';
 // --------------- Hook principal pour RoomCreated
 export function useRoomCreatedMain() {
   // Hook principal de la room (depuis votre architecture globale)
@@ -122,6 +121,28 @@ export function useRoomCreatedMain() {
       setCurrentRoom((prev) => ({ ...prev, code: storedRoomCode }));
     }
   }, [currentRoom.code, setCurrentRoom]);
+
+  // Fallback front-only: assurer la présence/actualisation du message de bienvenue
+  useEffect(() => {
+    const text = '✦ Bienvenue dans Kensho ✦ Le but est avant tout de s\'amuser, donc bonne partie à vous ! ✦';
+    setCurrentRoom((prev) => {
+      const list = prev.messages || [];
+      const idx = list.findIndex((m: Message) => m.id === 'sys-welcome');
+      if (idx >= 0) {
+        const nextItem: Message = { ...list[idx], username: 'Winry', message: text };
+        const next = [...list];
+        next[idx] = nextItem;
+        return { ...prev, messages: next };
+      }
+      const welcomeMsg: Message = {
+        id: 'sys-welcome',
+        username: 'Winry',
+        message: text,
+        timestamp: new Date(),
+      };
+      return { ...prev, messages: [...list, welcomeMsg] };
+    });
+  }, [currentRoom?.code]);
 
   return enhancedActions;
 }

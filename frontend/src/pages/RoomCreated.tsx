@@ -550,7 +550,28 @@ function RoomCreated() {
                     </div>
                     <div className="text-white/70 text-sm">
                       {/* Liste historique */}
-                      <div ref={historyEndRef}></div>
+                      {((currentRoom?.messages ?? []).length === 0) ? (
+                        <div className="text-white/50 text-center py-2">Aucun message</div>
+                      ) : (
+                        <div className="space-y-2">
+                          {(currentRoom?.messages ?? []).map((msg) => {
+                            const isWinry = msg.username === 'Winry';
+                            return (
+                              <div
+                                key={msg.id}
+                                className={`${isWinry ? 'bg-indigo-500/10 border-indigo-300/30' : 'bg-white/5 border-white/10'} rounded-md px-3 py-2 flex items-center justify-between`}
+                              >
+                                <div className={`${isWinry ? 'text-indigo-100' : 'text-white/80'}`}>
+                                  <span className={`${isWinry ? 'text-indigo-200/70' : 'text-white/60'} text-xs mr-2`}>{formatTime(msg.timestamp)}</span>
+                                  <span className={`font-semibold mr-1 ${isWinry ? 'text-indigo-200' : ''}`}>{msg.username}</span>
+                                  <span className={`${isWinry ? 'text-indigo-100 italic' : 'text-white/70'}`}>{msg.message}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          <div ref={historyEndRef}></div>
+                        </div>
+                      )}
                     </div>
                   </div>
 

@@ -554,11 +554,12 @@ function RoomCreated() {
                         <div className="text-white/50 text-center py-2">Aucun message</div>
                       ) : (
                         <div className="space-y-2">
-                          {(currentRoom?.messages ?? []).map((msg) => {
+                          {(currentRoom?.messages ?? []).map((msg, i) => {
                             const isWinry = msg.username === 'Winry';
+                            const key = `${msg.id ?? 'no-id'}-${i}`;
                             return (
                               <div
-                                key={msg.id}
+                                key={key}
                                 className={`${isWinry ? 'bg-indigo-500/10 border-indigo-300/30' : 'bg-white/5 border-white/10'} rounded-md px-3 py-2 flex items-center justify-between`}
                               >
                                 <div className={`${isWinry ? 'text-indigo-100' : 'text-white/80'}`}>

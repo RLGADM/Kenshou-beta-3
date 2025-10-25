@@ -60,6 +60,17 @@ export function useRoomGameActions(socket: SocketType | null, handleSendMessage:
     }
   };
 
+  // Reprendre la partie (resume)
+  const resumeGame = () => {
+    if (!socket) {
+      console.log('No socket connection for resuming game');
+      return;
+    }
+    console.log('[FRONT] Emitting resumeGame', { socketId: socket.id });
+    // Use any cast because resumeGame may not be declared in ClientToServerEvents
+    (socket as any).emit('resumeGame');
+  };
+
   const requestDebugInfo = () => {
     if (socket) {
       console.log('Requesting debug info from server...');
@@ -70,6 +81,7 @@ export function useRoomGameActions(socket: SocketType | null, handleSendMessage:
   return {
     startGame,
     pauseGame,
+    resumeGame,
     //resumeGame,
     resetGame,
     sendProposal,

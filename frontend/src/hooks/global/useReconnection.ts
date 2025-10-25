@@ -20,6 +20,8 @@ export function useReconnection({ socket, isConnected, hasRejoinAttempted, handl
 
     const userToken = localStorage.getItem('userToken');
     const hasLeftRoom = localStorage.getItem('hasLeftRoom');
+    const savedTeam = localStorage.getItem('userTeam');
+    const savedRole = localStorage.getItem('userRole');
 
     // Fallback sur roomCode si lastRoomCode absent
     const roomCode = localStorage.getItem('lastRoomCode') || localStorage.getItem('roomCode');
@@ -27,7 +29,7 @@ export function useReconnection({ socket, isConnected, hasRejoinAttempted, handl
     // Fallback sur username si lastUsername absent
     const lastUsernameRaw = localStorage.getItem('lastUsername');
     const usernameStored = localStorage.getItem('username');
-    const username = lastUsernameRaw ? JSON.parse(lastUsernameRaw) : (usernameStored || '');
+    const username = lastUsernameRaw ? JSON.parse(lastUsernameRaw) : usernameStored || '';
 
     // Prérequis stricts
     if (!userToken || !roomCode || !username) {

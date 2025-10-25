@@ -1,28 +1,26 @@
 // --------------- IMPORT
 import React, { useState } from 'react';
-import { useRoomTeamActions } from '../hooks/roomcreated/useRoomTeamActions';
+import { Phase1Modal, Phase2Modal, Phase3Modal, VictoryModal } from '../components/PhaseModals';
 import {
   Copy,
   Users,
   LogOut,
   Check,
-  Settings,
   Play,
   Pause,
   Timer,
   Trophy,
   History,
-  Gamepad2,
   Target,
   ShieldX,
   Crown,
   Eye,
   PlayCircle,
-  PauseCircle,
   X,
   RefreshCw,
 } from 'lucide-react';
-import { useRoomCreatedMain } from '../hooks/roomcreated';
+import wordsFacileRaw from '../Words/facile.txt?raw';
+import { useRoomCreatedMain, useRoomGameLogic } from '../hooks/roomcreated';
 import type { User } from '@/types';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
@@ -36,7 +34,6 @@ function RoomCreated() {
 
   // Ancien design: constantes de style (classes Tailwind)
   const panel = 'bg-slate-800 rounded-xl p-6 shadow-md border border-slate-700';
-  const panelTight = 'bg-slate-800 rounded-xl p-4 shadow-md border border-slate-700';
   const chip = 'bg-slate-700 px-4 py-2 rounded-full border border-slate-600';
   const btnGhost = 'bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white';
 
@@ -69,14 +66,58 @@ function RoomCreated() {
     sendProposal,
     joinTeam,
     joinSpectator,
-    startGame,
-    pauseGame,
+    startGame: startGameBase,
+    pauseGame: pauseGameBase,
+    resumeGame: resumeGameBase,
     handleLeaveRoom,
     handleResetGame,
     // Modal pseudo
     handleJoinRoom,
     socket,
   } = useRoomCreatedMain();
+
+  // Hook de gestion du jeu
+  const gameLogic = useRoomGameLogic(currentRoom.parameters);
+
+  // Actions de jeu combinées
+  const startGame = () => {
+    startGameBase();
+    gameLogic.actions.startGame();
+    // ensure a local candidate word is available right when the game starts
+    try {
+      const w = pickRandomWord();
+      if (w) setCurrentCandidateWord(w);
+    } catch (e) {
+      console.warn('failed to seed candidateWord on start', e);
+    }
+  };
+
+  const pauseGame = () => {
+    // pause both server-side and local timer
+    pauseGameBase();
+    try {
+      gameLogic.timer.pauseTimer();
+    } catch (e) {
+      // fallback: ignore if timer API missing
+      console.warn('Timer pause failed', e);
+    }
+    gameLogic.actions.pauseGame();
+  };
+
+  const resumeGame = () => {
+    // signal server to resume (separate event) and resume local timer/state
+    try {
+      resumeGameBase?.();
+    } catch (e) {
+      console.warn('resumeGameBase not available', e);
+    }
+    try {
+      gameLogic.timer.resumeTimer();
+    } catch (e) {
+      console.warn('Timer resume failed', e);
+    }
+    gameLogic.actions.resumeGame();
+  };
 
   // Fonction locale pour copier le lien de la room
   const copyRoomLink = async () => {
@@ -120,21 +161,13 @@ function RoomCreated() {
 
   // Garde: interdit les changements UNIQUEMENT pendant une manche active (isPlaying)
   const isRoundActive = Boolean(currentRoom?.gameState?.isPlaying);
-  
+
   const safeJoinTeam = (team: 'red' | 'blue' | 'spectator', role?: 'sage' | 'disciple' | 'spectator') => {
     if (isRoundActive) {
-      showError("Changements de rôle/équipe désactivés pendant la manche en cours");
+      showError('Changements de rôle/équipe désactivés pendant la manche en cours');
       return;
     }
     joinTeam(team, role);
-  };
-
-  const safeJoinSpectator = () => {
-    if (isRoundActive || Boolean(currentRoom?.gameState?.isPlaying)) {
-      showError("Changements de rôle/équipe désactivés pendant la partie");
-      return;
-    }
-    joinSpectator();
   };
 
   // Protection: si pas de room ou d'utilisateur
@@ -146,57 +179,84 @@ function RoomCreated() {
     );
   }
 
-  // Données dérivées pour le JSX
-  const gameState = currentRoom.gameState;
-  const isGameActive = Boolean(gameState?.isPlaying);
-  const currentRoundState = gameState?.rounds?.[gameState.currentRound];
-  const currentPhaseIndex = currentRoundState?.currentPhase ?? 0;
-  const currentPhaseState = currentRoundState?.phases?.[currentPhaseIndex];
-  // Listes d'équipe et rôles déjà dérivées
-  // Dérivations d'équipe et rôles
+  // États et données dérivées pour le JSX
+  const isGameActive = gameLogic.gameState.isPlaying;
+  const isGamePaused = Boolean((gameLogic.gameState as any).isPaused);
+  const currentRound = gameLogic.gameState.currentRound;
+  const currentPhase = currentRound.currentPhase;
+
+  // État pour le mot candidat
+  const [localCandidateWord, setLocalCandidateWord] = useState<string | null>(null);
+
+  // Fonction utilitaire pour générer un mot aléatoire
+  const getRandomWord = React.useCallback(() => {
+    const words = (wordsFacileRaw || '')
+      .split(/\r?\n/)
+      .map((w) => w.trim())
+      .filter(Boolean);
+    if (words.length > 0) {
+      return words[Math.floor(Math.random() * words.length)];
+    }
+    return null;
+  }, []);
+
+  // Récupérer le mot de l'équipe actuelle
+  const teamWord = React.useMemo(() => {
+    if (!currentUser?.team || !gameLogic.gameState.currentRound) return null;
+    return currentUser.team === 'red'
+      ? gameLogic.gameState.currentRound.redTeamWord
+      : gameLogic.gameState.currentRound.blueTeamWord;
+  }, [currentUser?.team, gameLogic.gameState.currentRound]);
+
+  // État local pour le mot candidat
+  // Supprimé : variables candidateWord qui sont maintenant remplacées par currentCandidateWord
+
+  // Fonction utilitaire pour générer un mot aléatoire
+  const pickRandomWord = React.useCallback(() => {
+    const words = (wordsFacileRaw || '')
+      .split(/\r?\n/)
+      .map((w) => w.trim())
+      .filter(Boolean);
+    if (words.length > 0) {
+      return words[Math.floor(Math.random() * words.length)];
+    }
+    return null;
+  }, []);
+
+  // Listes d'équipe et rôles
   const redTeam = currentRoom?.users?.filter((user: User) => user.team === 'red') ?? [];
   const blueTeam = currentRoom?.users?.filter((user: User) => user.team === 'blue') ?? [];
   const redSage = redTeam.find((u: User) => u.role === 'sage');
   const blueSage = blueTeam.find((u: User) => u.role === 'sage');
+  const spectators = currentRoom?.users?.filter((user: User) => user.team === 'spectator') ?? [];
 
-  // Ajout: intitulé de phase et affichage combiné
+  // Titres et labels des phases
   const phaseTitles: Record<number, string> = {
     1: 'Choisissez votre mot',
     2: 'Choisissez vos interdits',
     3: 'Préparez votre laius !',
   };
+
   const phaseDisplay =
-    currentPhaseIndex === 0 ? 'En attente' : `Phase ${currentPhaseIndex} - ${phaseTitles[currentPhaseIndex] ?? ''}`;
-  const userTeam = currentUser?.team ?? 'spectator';
-  const phaseLabel =
-    currentRoom?.gameState?.currentPhase === 1
-      ? 'Phase 1'
-      : currentRoom?.gameState?.currentPhase === 2
-        ? 'Phase 2'
-        : currentRoom?.gameState?.currentPhase === 3
-          ? 'Phase 3'
-          : 'En attente';
-  const teamWord =
-    userTeam === 'red'
-      ? currentRoom?.gameState?.teams?.red?.word
-      : userTeam === 'blue'
-        ? currentRoom?.gameState?.teams?.blue?.word
-        : undefined;
-  const userRole = typeof currentUser?.role === 'string' ? currentUser.role : null;
-  const canJoinRed = !isJoiningTeam && userTeam !== 'red';
-  const canJoinBlue = !isJoiningTeam && userTeam !== 'blue';
-  const joinLabel = userTeam ? 'Changer' : 'Rejoindre';
-  const spectators = currentRoom?.users?.filter((user: User) => user.team === 'spectator') ?? [];
+    currentPhase.status === 'waiting'
+      ? 'En attente'
+      : `Phase ${currentPhase.index} - ${phaseTitles[currentPhase.index] ?? ''}`;
+
+  // État du jeu pour l'équipe actuelle
+  // teamWord est défini plus haut avec useMemo
+  // État du jeu pour l'équipe actuelle
+  const teamForbiddenWords =
+    currentUser?.team === 'red'
+      ? currentRound.redTeamForbiddenWords
+      : currentUser?.team === 'blue'
+        ? currentRound.blueTeamForbiddenWords
+        : [];
 
   // Créateur et filtres sans créateur pour le modal
   const creatorToken = currentRoom?.creatorToken;
-  const creatorUser = currentRoom?.users?.find((u: any) => (u.userToken ?? u.id) === creatorToken);
   const redTeamNoCreator = redTeam.filter((u: any) => (u.userToken ?? u.id) !== creatorToken);
   const blueTeamNoCreator = blueTeam.filter((u: any) => (u.userToken ?? u.id) !== creatorToken);
   const spectatorsNoCreator = spectators.filter((u: any) => (u.userToken ?? u.id) !== creatorToken);
-
-  const isRedDisciple = userTeam === 'red' && userRole === 'disciple';
-  const isBlueDisciple = userTeam === 'blue' && userRole === 'disciple';
   //onst redSage = redTeam.find((u: User) => u.role === 'sage');
   //onst blueSage = blueTeam.find((u: User) => u.role === 'sage');
 
@@ -214,9 +274,69 @@ function RoomCreated() {
   const showUsernameModal =
     !storedUsername && !inRoom && !permissions.isAdmin && Boolean(routeRoomCode ?? currentRoom?.code);
 
+  // Timer calculations (total, remaining, progress)
+  const timerTotal =
+    currentPhase.index === 1
+      ? currentRoom.parameters.ParametersTimeFirst
+      : currentPhase.index === 2
+        ? currentRoom.parameters.ParametersTimeSecond
+        : currentRoom.parameters.ParametersTimeThird;
+
+  const timerRemaining = gameLogic.timer.getCurrentTime();
+  const timerProgress = timerTotal ? Math.max(0, Math.min(100, ((timerTotal - timerRemaining) / timerTotal) * 100)) : 0;
+
+  // Victory detection
+  const maxScore = currentRoom.parameters.ParametersPointsMaxScore;
+  const scores = gameLogic.gameState.scores;
+  const winner: 'red' | 'blue' | 'tie' | null =
+    scores.red >= maxScore || scores.blue >= maxScore
+      ? scores.red > scores.blue
+        ? 'red'
+        : scores.blue > scores.red
+          ? 'blue'
+          : 'tie'
+      : null;
+
   {
     /* Fonction de rendu d'une carte utilisateur */
   }
+  // Gestionnaire de mot local pour la Phase1
+  const [currentCandidateWord, setCurrentCandidateWord] = React.useState<string | null>(teamWord ?? null);
+
+  const generateRandomWord = React.useCallback(() => {
+    try {
+      const lines = (wordsFacileRaw || '')
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+      if (lines.length === 0) return null;
+      return lines[Math.floor(Math.random() * lines.length)];
+    } catch (e) {
+      console.warn('generateRandomWord failed', e);
+      return null;
+    }
+  }, []);
+
+  // Sync candidate with teamWord when it appears or when phase changes
+  React.useEffect(() => {
+    if (teamWord) {
+      setCurrentCandidateWord(teamWord);
+      return;
+    }
+
+    if (
+      currentPhase.status === 'in-progress' &&
+      currentPhase.index === 1 &&
+      currentUser?.team &&
+      currentUser.team !== 'spectator'
+    ) {
+      // If no candidate yet, pick one
+      setCurrentCandidateWord((prev) => prev ?? generateRandomWord());
+    } else {
+      // clear when phase not active
+      setCurrentCandidateWord(null);
+    }
+  }, [teamWord, currentPhase.status, currentPhase.index, currentUser?.team, generateRandomWord]);
   const renderUserCard = (user: User) => {
     const cardData = getUserCardData(user, currentUser);
     const avatarColor = cardData.teamColor === 'red' ? 'rose' : cardData.teamColor;
@@ -237,7 +357,6 @@ function RoomCreated() {
           {cardData.role === 'sage' && <Crown className="w-4 h-4 text-yellow-400" />}
           {cardData.role === 'disciple' && <Users className="w-4 h-4 text-green-400" />}
         </div>
-
       </div>
     );
   };
@@ -279,6 +398,66 @@ function RoomCreated() {
             </button>
           </div>
         </div>
+      )}
+      {/* Phase modals */}
+      {currentPhase.status === 'in-progress' && currentPhase.index === 1 && currentUser?.team !== 'spectator' && (
+        <Phase1Modal
+          word={currentCandidateWord ?? teamWord ?? null}
+          onAccept={() => {
+            if (currentUser?.team && currentUser.team !== 'spectator') {
+              try {
+                // D'abord voter pour accepter le mot
+                gameLogic.actions.handleVote(currentUser.team, currentUser.username, 'accept');
+                toast.success('Vote enregistré : Accepter');
+              } catch (e) {
+                console.warn('handleVote failed', e);
+                toast.error('Erreur lors du vote');
+              }
+            }
+          }}
+          onReject={() => {
+            if (currentUser?.team && currentUser.team !== 'spectator') {
+              try {
+                // D'abord enregistrer le vote de rejet
+                gameLogic.actions.handleVote(currentUser.team, currentUser.username, 'reject');
+                toast.success('Vote enregistré : Refuser');
+                // Le reroll sera effectué automatiquement quand tous les votes seront négatifs
+              } catch (e) {
+                console.warn('handleVote failed', e);
+                toast.error('Erreur lors du vote');
+              }
+            }
+          }}
+          onClose={() => {}} // La modal se fermera automatiquement quand tous les membres auront voté
+        />
+      )}
+
+      {currentPhase.status === 'in-progress' && currentPhase.index === 2 && (
+        <Phase2Modal
+          forbiddenWords={teamForbiddenWords}
+          onAddWord={(word) => {
+            if (currentUser?.team && currentUser.team !== 'spectator')
+              gameLogic.actions.addForbiddenWord(currentUser.team, word);
+          }}
+          onRemoveWord={(index) => {
+            if (currentUser?.team && currentUser.team !== 'spectator')
+              gameLogic.actions.removeForbiddenWord(currentUser.team, index);
+          }}
+          maxWords={currentRoom.parameters.ParametersTeamMaxForbiddenWords}
+          onClose={() => {}}
+        />
+      )}
+
+      {currentPhase.status === 'in-progress' && currentPhase.index === 3 && (
+        <Phase3Modal
+          wordToGuess={teamWord ?? null}
+          forbiddenWords={teamForbiddenWords}
+          onTrapClick={() => {}}
+          onAcceptTrap={() => {}}
+          onRejectTrap={() => {}}
+          trapWord={null}
+          onClose={() => {}}
+        />
       )}
 
       {/* Fond animé */}
@@ -328,11 +507,17 @@ function RoomCreated() {
                 <>
                   {/* Bouton Jouer/Pause */}
                   <button
-                    onClick={isGameActive ? pauseGame : startGame}
+                    onClick={isGameActive ? pauseGame : isGamePaused ? resumeGame : startGame}
                     className="bg-green-500/80 hover:bg-green-600 text-white px-4 py-2 rounded-xl font-semibold transition-all duration-300 flex items-center space-x-2 hover:scale-105"
                   >
-                    {isGameActive ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                    <span>{isGameActive ? 'Pause' : 'Jouer'}</span>
+                    {isGameActive ? (
+                      <Pause className="w-4 h-4" />
+                    ) : isGamePaused ? (
+                      <PlayCircle className="w-4 h-4" />
+                    ) : (
+                      <Play className="w-4 h-4" />
+                    )}
+                    <span>{isGameActive ? 'Pause' : isGamePaused ? 'Reprendre' : 'Jouer'}</span>
                   </button>
 
                   {/* Bouton Relancer */}
@@ -376,7 +561,7 @@ function RoomCreated() {
                   <div className="flex items-center justify-center mb-2">
                     <Timer className="w-5 h-5 text-orange-300 mr-2" />
                     <span className="text-white font-bold text-lg">
-                      {formatTimer(currentPhaseState?.timeRemaining || 0)}
+                      {formatTimer(gameLogic.timer.getCurrentTime())}
                     </span>
                   </div>
                   {/* Progress Bar */}
@@ -385,17 +570,7 @@ function RoomCreated() {
                       <div
                         className="h-2 rounded-full transition-all duration-1000 bg-gradient-to-r from-green-400 to-red-500"
                         style={{
-                          width: currentPhaseState?.timer
-                            ? `${Math.max(
-                                0,
-                                Math.min(
-                                  100,
-                                  (((currentPhaseState.timer ?? 0) - (currentPhaseState.timeRemaining ?? 0)) /
-                                    (currentPhaseState.timer ?? 1)) *
-                                    100
-                                )
-                              )}%`
-                            : '0%',
+                          width: `${timerProgress}%`,
                         }}
                       ></div>
                     </div>
@@ -409,7 +584,9 @@ function RoomCreated() {
                     <Trophy className="w-5 h-5 text-purple-300 mr-2" />
                     <span className="text-purple-200 text-sm font-semibold">Score</span>
                   </div>
-                  <h3 className="text-white font-bold text-base">0 - 0</h3>
+                  <h3 className="text-white font-bold text-base">
+                    {scores.red} - {scores.blue}
+                  </h3>
                 </div>
               </div>
             </div>
@@ -438,22 +615,22 @@ function RoomCreated() {
                       Sage
                     </h4>
                     {currentUser.team !== 'red' ? (
-                       <button
-                         onClick={() => safeJoinTeam('red', 'sage')}
-                         disabled={isJoiningTeam || isRoundActive || isGameActive || !!redSage}
-                         className="bg-rose-500/20 hover:bg-rose-500/40 text-rose-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 border border-rose-300/30 hover:border-rose-300/50 hover:scale-105 disabled:opacity-50"
-                       >
-                         Rejoindre
-                       </button>
-                     ) : currentUser.role === 'disciple' ? (
-                       <button
-                         onClick={() => safeJoinTeam('red', 'sage')}
-                         disabled={isJoiningTeam || isRoundActive || isGameActive}
-                         className="bg-rose-500/20 hover:bg-rose-500/40 text-rose-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 border border-rose-300/30 hover:border-rose-300/50 hover:scale-105 disabled:opacity-50"
-                       >
-                         Échanger
-                       </button>
-                     ) : null}
+                      <button
+                        onClick={() => safeJoinTeam('red', 'sage')}
+                        disabled={isJoiningTeam || isRoundActive || isGameActive || !!redSage}
+                        className="bg-rose-500/20 hover:bg-rose-500/40 text-rose-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 border border-rose-300/30 hover:border-rose-300/50 hover:scale-105 disabled:opacity-50"
+                      >
+                        Rejoindre
+                      </button>
+                    ) : currentUser.role === 'disciple' ? (
+                      <button
+                        onClick={() => safeJoinTeam('red', 'sage')}
+                        disabled={isJoiningTeam || isRoundActive || isGameActive}
+                        className="bg-rose-500/20 hover:bg-rose-500/40 text-rose-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 border border-rose-300/30 hover:border-rose-300/50 hover:scale-105 disabled:opacity-50"
+                      >
+                        Échanger
+                      </button>
+                    ) : null}
                   </div>
 
                   {/* Carte Sage Rouge */}
@@ -546,33 +723,62 @@ function RoomCreated() {
                         <History className="w-5 h-5 text-white/70 mr-2" />
                         <span className="text-white font-semibold">Historique</span>
                       </div>
-                      <div className="text-white/60 text-sm">{phaseLabel}</div>
+                      <div className="text-white/60 text-sm">{phaseDisplay}</div>
                     </div>
                     <div className="text-white/70 text-sm">
-                      {/* Liste historique */}
-                      {((currentRoom?.messages ?? []).length === 0) ? (
-                        <div className="text-white/50 text-center py-2">Aucun message</div>
-                      ) : (
-                        <div className="space-y-2">
-                          {(currentRoom?.messages ?? []).map((msg, i) => {
-                            const isWinry = msg.username === 'Winry';
-                            const key = `${msg.id ?? 'no-id'}-${i}`;
-                            return (
-                              <div
-                                key={key}
-                                className={`${isWinry ? 'bg-indigo-500/10 border-indigo-300/30' : 'bg-white/5 border-white/10'} rounded-md px-3 py-2 flex items-center justify-between`}
-                              >
-                                <div className={`${isWinry ? 'text-indigo-100' : 'text-white/80'}`}>
-                                  <span className={`${isWinry ? 'text-indigo-200/70' : 'text-white/60'} text-xs mr-2`}>{formatTime(msg.timestamp)}</span>
-                                  <span className={`font-semibold mr-1 ${isWinry ? 'text-indigo-200' : ''}`}>{msg.username}</span>
-                                  <span className={`${isWinry ? 'text-indigo-100 italic' : 'text-white/70'}`}>{msg.message}</span>
-                                </div>
+                      {/* Affiche d'abord l'historique de jeu (événements) puis les messages de chat */}
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {gameLogic.history &&
+                        gameLogic.history.length === 0 &&
+                        (currentRoom?.messages ?? []).length === 0 ? (
+                          <div className="text-white/50 text-center py-2">Aucun message</div>
+                        ) : null}
+
+                        {gameLogic.history &&
+                          gameLogic.history.map((entry, idx) => (
+                            <div
+                              key={`gh-${idx}`}
+                              className={`p-2 rounded ${
+                                entry.type === 'game'
+                                  ? 'bg-purple-500/20 text-purple-200'
+                                  : entry.type === 'phase'
+                                    ? 'bg-blue-500/20 text-blue-200'
+                                    : entry.type === 'team'
+                                      ? 'bg-green-500/20 text-green-200'
+                                      : entry.type === 'victory'
+                                        ? 'bg-yellow-500/20 text-yellow-200'
+                                        : 'bg-slate-700/50 text-white/60'
+                              }`}
+                            >
+                              {entry.message}
+                            </div>
+                          ))}
+
+                        {(currentRoom?.messages ?? []).map((msg, i) => {
+                          const isWinry = msg.username === 'Winry';
+                          const key = `${msg.id ?? 'no-id'}-${i}`;
+                          return (
+                            <div
+                              key={key}
+                              className={`${isWinry ? 'bg-indigo-500/10 border-indigo-300/30' : 'bg-white/5 border-white/10'} rounded-md px-3 py-2 flex items-center justify-between`}
+                            >
+                              <div className={`${isWinry ? 'text-indigo-100' : 'text-white/80'}`}>
+                                <span className={`${isWinry ? 'text-indigo-200/70' : 'text-white/60'} text-xs mr-2`}>
+                                  {formatTime(msg.timestamp)}
+                                </span>
+                                <span className={`font-semibold mr-1 ${isWinry ? 'text-indigo-200' : ''}`}>
+                                  {msg.username}
+                                </span>
+                                <span className={`${isWinry ? 'text-indigo-100 italic' : 'text-white/70'}`}>
+                                  {msg.message}
+                                </span>
                               </div>
-                            );
-                          })}
-                          <div ref={historyEndRef}></div>
-                        </div>
-                      )}
+                            </div>
+                          );
+                        })}
+
+                        <div ref={historyEndRef}></div>
+                      </div>
                     </div>
                   </div>
 
@@ -585,7 +791,7 @@ function RoomCreated() {
                       </div>
                     </div>
                     <div className="text-white/70 text-sm">
-                      {userTeam !== 'spectator' ? (
+                      {currentUser?.team && currentUser.team !== 'spectator' ? (
                         <div>
                           <div className="text-white/60 mb-2 text-xs">Visible uniquement par votre équipe</div>
                           <div className="text-white font-medium">{teamWord || 'Aucun mot choisi'}</div>
@@ -617,24 +823,24 @@ function RoomCreated() {
                       Sage
                     </h4>
                     {currentUser.team === 'blue' ? (
-                       currentUser.role === 'disciple' && (
-                         <button
-                           onClick={() => safeJoinTeam('blue', 'sage')}
-                           disabled={isJoiningTeam || isRoundActive || isGameActive}
-                           className="bg-blue-500/20 hover:bg-blue-500/40 text-blue-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 border border-blue-300/30 hover:border-blue-300/50 hover:scale-105 disabled:opacity-50"
-                         >
-                           Échanger
-                         </button>
-                       )
-                     ) : (
-                       <button
-                         onClick={() => safeJoinTeam('blue', 'sage')}
-                         disabled={isJoiningTeam || isRoundActive || isGameActive || !!blueSage}
-                         className="bg-blue-500/20 hover:bg-blue-500/40 text-blue-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 border border-blue-300/30 hover:border-blue-300/50 hover:scale-105 disabled:opacity-50"
-                       >
-                         Rejoindre
-                       </button>
-                     )}
+                      currentUser.role === 'disciple' && (
+                        <button
+                          onClick={() => safeJoinTeam('blue', 'sage')}
+                          disabled={isJoiningTeam || isRoundActive || isGameActive}
+                          className="bg-blue-500/20 hover:bg-blue-500/40 text-blue-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 border border-blue-300/30 hover:border-blue-300/50 hover:scale-105 disabled:opacity-50"
+                        >
+                          Échanger
+                        </button>
+                      )
+                    ) : (
+                      <button
+                        onClick={() => safeJoinTeam('blue', 'sage')}
+                        disabled={isJoiningTeam || isRoundActive || isGameActive || !!blueSage}
+                        className="bg-blue-500/20 hover:bg-blue-500/40 text-blue-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 border border-blue-300/30 hover:border-blue-300/50 hover:scale-105 disabled:opacity-50"
+                      >
+                        Rejoindre
+                      </button>
+                    )}
                   </div>
 
                   {/* Carte Sage Bleu */}
@@ -657,24 +863,24 @@ function RoomCreated() {
                       Disciples
                     </h4>
                     {currentUser.team === 'blue' ? (
-                       currentUser.role === 'sage' && (
-                         <button
-                           onClick={() => safeJoinTeam('blue', 'disciple')}
-                           disabled={isJoiningTeam || isRoundActive || isGameActive}
-                           className="bg-blue-500/20 hover:bg-blue-500/40 text-blue-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 border border-blue-300/30 hover:border-blue-300/50 hover:scale-105 disabled:opacity-50"
-                         >
-                           Échanger
-                         </button>
-                       )
-                     ) : (
-                       <button
-                         onClick={() => safeJoinTeam('blue', 'disciple')}
-                         disabled={isJoiningTeam || isRoundActive || isGameActive}
-                         className="bg-blue-500/20 hover:bg-blue-500/40 text-blue-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 border border-blue-300/30 hover:border-blue-300/50 hover:scale-105 disabled:opacity-50"
-                       >
-                         Rejoindre
-                       </button>
-                     )}
+                      currentUser.role === 'sage' && (
+                        <button
+                          onClick={() => safeJoinTeam('blue', 'disciple')}
+                          disabled={isJoiningTeam || isRoundActive || isGameActive}
+                          className="bg-blue-500/20 hover:bg-blue-500/40 text-blue-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 border border-blue-300/30 hover:border-blue-300/50 hover:scale-105 disabled:opacity-50"
+                        >
+                          Échanger
+                        </button>
+                      )
+                    ) : (
+                      <button
+                        onClick={() => safeJoinTeam('blue', 'disciple')}
+                        disabled={isJoiningTeam || isRoundActive || isGameActive}
+                        className="bg-blue-500/20 hover:bg-blue-500/40 text-blue-200 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 border border-blue-300/30 hover:border-blue-300/50 hover:scale-105 disabled:opacity-50"
+                      >
+                        Rejoindre
+                      </button>
+                    )}
                   </div>
                   <div className="space-y-3">
                     {blueTeam.filter((user) => user.role === 'disciple').length > 0 ? (
@@ -889,6 +1095,8 @@ function RoomCreated() {
           </div>
         </div>
       )}
+      {/* Victory modal when someone reaches max score */}
+      {winner && <VictoryModal winningTeam={winner === 'tie' ? 'égalité' : winner} onClose={() => {}} />}
     </div>
   );
 }

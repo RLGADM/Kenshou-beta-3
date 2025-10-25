@@ -141,12 +141,12 @@ export function useRoomEvents() {
       setRoomUsers(users);
       // Alimente aussi l’objet currentRoom pour l’UI (compteur joueurs, filtres équipes/spectateurs)
       setCurrentRoom((prev) => ({ ...prev, users }));
-  
+
       if (userToken) {
-          const self = getSelfFromUsers(users, userToken);
-          if (self) {
-              setCurrentUser((prev) => ({ ...prev, ...self }));
-          }
+        const self = getSelfFromUsers(users, userToken);
+        if (self) {
+          setCurrentUser((prev) => ({ ...prev, ...self }));
+        }
       }
     };
 
@@ -198,9 +198,9 @@ export function useRoomEvents() {
                 ? 'Phase 1 - Choisissez votre mot'
                 : nextPhase === 2
                   ? 'Phase 2 - Choisissez vos interdits'
-                : nextPhase === 3
-                  ? 'Phase 3 - Préparez votre laius !'
-                : 'Retour à l’attente',
+                  : nextPhase === 3
+                    ? 'Phase 3 - Préparez votre laius !'
+                    : 'Retour à l’attente',
             timestamp: new Date(),
           };
 
@@ -296,19 +296,28 @@ export function useRoomEvents() {
             const normalizedSocketId = String(socketParam?.id ?? prev.socketId ?? '');
             const normalizedToken = String(userToken ?? prev.userToken ?? '');
 
+            // Restaurer l'équipe et le rôle précédents si disponibles
+            const savedTeam = localStorage.getItem('userTeam');
+            const savedRole = localStorage.getItem('userRole');
+
+            const team = savedTeam || 'spectator';
+            const role = savedRole || 'spectator';
+
             return {
               ...prev,
               userToken: normalizedToken,
               username: normalizedUsername,
               room: normalizedRoomCode,
-              team: 'spectator',
-              role: 'spectator',
+              team,
+              role,
               socketId: normalizedSocketId,
             } as User;
           });
 
-          // Alignement côté serveur (par défaut spectateur)
-          socketParam.emit('joinTeam', { roomCode, userToken, team: 'spectator', role: 'spectator' });
+          // Alignement côté serveur avec l'équipe et le rôle sauvegardés
+          const savedTeam = localStorage.getItem('userTeam') || 'spectator';
+          const savedRole = localStorage.getItem('userRole') || 'spectator';
+          socketParam.emit('joinTeam', { roomCode, userToken, team: savedTeam, role: savedRole });
 
           hasJoinedRoomRef.current = true;
           setError(null);

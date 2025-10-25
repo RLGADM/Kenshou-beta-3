@@ -1,0 +1,127 @@
+﻿Le projet que je veux mener est la création d’un jeu web en temps réèl.
+Nous avons créer déjà le design du site et la fonctionnalité de création de salon de jeu, il reste maintenant à t’expliquer comment ce jeu se joue et son déroulement.
+
+
+2 Equipes s’affrontent, les bleus contre les rouges.
+Une partie se déroule en manche, les manches se déroulent en phase. Il y a 3 phases au total.
+Premier prélude, les joueurs se connectent au salon, mais ils jouent sur un vocal discord.
+
+
+Commençons par les rôles. Dans chaque équipe, il y a un seul et unique Sage, et un ou plusieurs Disciple. Lorsque nous rentrons dans la phase 3 (que je t’explique juste après), le sage lance le bouton démarrer et voit un mot choisir par l’équipe adverse aooaraitre. Les disciples ne le voient pas. Le role du sage est de faire deviner ce mot aux disciples. Les disciples sont limités en nombre de tentative de trouver le mot. Ce nombre limité de mot est valable pour l’équipe entière pas par joueurs étant disciple. Ils doivent taper le mot dans la zone de saisie et valider avec le bouton ou la  touche entrée. Si un disciple saisie le mot quer le sage devait faire deviner, alors la manche leur rapporte 1 point. Si au bout du timer ou d’un dépassement de la limite de mot saisie alors il ne gagne aucun point.
+
+
+Cette phase 3 se fait à tour de rôle, à savoir l’équipe rouge commence, puis une fois finis, c’est au tour de l’équipe bleu.
+
+
+Il y a la possibilité de personnaliser les règles, et par exemple il y a la règle si les deux équipes trouvent leur mot alors aucune des deux équipes ne remporte le point (je te l’expliquerait plus en détail après.
+
+
+Pour finir sur les rôles,les disciples ne peuvent pas communiquer entre eux verbalement.
+Il participe surtout à la phase 1 du choix d’un mot et de la phase 2 du choix des mots pièges et à essayer de deviner le mot de son sage dans la phase 3.
+
+
+Prélude : chaque phase a un timer qui peut être différent entre eux. Le bouton Jouer lance la phase et le timer,. Le timer de la phase 2 se lance automatiquement après la fin du timer de la phase 1 mais à la fin de la phase 2, la manche se met en pause, et il faudra cliquer sur Jouer de nouveau pour lancer la phase 3.
+Les phases 1 et 2 sont jouer en même temps par les deux équipes, mais pour la phase 3, il y aura le passage du sage rouge, manche en pause puis recliquer sur jouer pour lancer la phase 3 du sage bleu
+
+
+Continuons par les phases::
+Phase 1 - Choix du mot. Un mot est tiré au sort depuis les fichiers dico.txt disponible sur le server et est proposé à chacune des équipes. Chaque joueur dans son équipe devra mettre un pouce vers le haut s’il le veule ou un pouce vers le bas s’il n’en veule pâs. C’est à la majorité que le mot est pris ou non. Dans le cadre d’une partie à 4 joueurs (car il faut avoir minimum 1 sage 1 disciple par équipe pour lancer une partie), c’est le choix du sage qui valide le mot ou l’invalide.
+Le mot proposé n’est visible que par son équipe et n’est pas le même que l’équipe adverse.
+Il y a un paramètre dans les règles définissant le nombre de passes. A savoir, si un mot est invalidé par une équipe, un autre mot est tiré au sort de nouveau. Seulement, la limite de passation des mots qui sont de base à 3 font que le dernier mot est impassable et est donc automatiquement validé.
+Le but de cette phase, c’est que le mot choisi par une équipe sera le mot à faire deviner au sage de l’équipe adverse.
+
+Phase 2 - Choix des mots piégés
+Après avoir choisi le mot, il y a encore une fois un paramètre de nombre limitant les mots piège (de base y’en a 6). Dans cette phase, chaque joueur peut saisir un mot dans la zone de saisie et le valider ce qui l’affichera dans la zone de jeu mots interdis par l’équipe.
+Seul la même équipe peut voir les mots qui ont été saisies, et à gauche de chaque mot saisie, il y a une icone poubelle pour supprimer le mot saisi pour le remplacer par un autre par exemple. La limite de mots pieges est lié à l’équipe et non aux joueurs dionc un joueur peut mettre 4 mots par exemple, la limite restera celle du parametre de la partie.
+Sur chaque mots choisi pendant le timer, il y a en dessous en plus petit du mot saisie le psedio du joueur qui l’a saisie. Egalement, tout le monde peut cliquer sur la poubelle à gauche d’un mot pour le supprimer même si ce n’est pas lui qui l’a propoisé.
+
+
+Phase 3 - Oration
+Avan toutes choses, les mots interdits choisis par l’équipe pendant la phase 2 sont visible uniquement par leur équipe et ont un logo point d’exclamation à gauche du mot.
+etant donnné que le sage ne sait pas en avant quel mot est choisi et quels mots sont piégés, l’équipe adverse de la phase d’oration du sage pourra cliquer sur l’un des points d’exclamation pour indiquer que le sage a été piégé et donc qu’il a perdu la manche.
+En appuyant sur le point d’exclamation, le timer se met en pause, un pop-up s’affiche avec la phrase suivante : “Le mot <insérer le mot piégé> a été piégé par l’équipe adverse ! 
+Sur ce pop-up, il y a le bouton Accepter qui confirme que le sage a perdu et le bouton annuler soit en cas d’erreur de clique d’une équipe ou par désacord du mot piégé.
+Seul les sages peuvent accepter ou refuser lorsqu’un mot est déclenché, ils ont la main pour les deux équipes (donc le sage bleu peut refuser un message du sage rouge par exemple).
+
+
+A la fin de la phase 3 à savoir quand les deux sages ibt fait leur oration, la manche se finiut et le score se met à jour (toujours soumis à parametre exemple 1 point pour ll’’équipe ayant trouver le mot de leur sage).
+
+
+La partie se remet en pause, c’était le premier round, la première manche. On doit cliquer sur jouer pour lancer la manche d’après.
+Une fois que l’une des deux équipes atteignent le score paramétré, c’est la victoire et la fin de la partie ! Cependant il est possible en fonction des paralmètres des règles que les deux équipes atteignent en même temps le score nécessaire et dans ec cas là c’est un draw.
+
+
+En cas de victoire d’une équipe, un modal s’ouvre aui milieu de l’écran en disaint : 
+Félicitation à <couleur de l’équipe gagnante> ! 
+un seul clic permet de fermer le modal ou pop-up si c’est plus intéressant niveau code.
+
+
+Le bouton rejouer permet donc par la suite de remettre les scores à zéro afin de pouvoir relancer une partie.
+
+
+Dans le UI du salon de jeu (RoomCreated) il faut que l’interface soit nickel.
+On lance la partie en cliquant sur le bouton jouer.
+Donc commençons par la phase 1 le choix du mot, il faut un pop-up avec le mot tiré au hasard d’afficher avec 2 icones pouce vers le haut pouce vers le bas, et à la majorité le mot est sauvegarder car ça sera le mot à faire deviner au sage adverse. Ce mot est à afficher dans la Zone de jeu premier bloc ou pour le moment c’est écris en attente.
+
+
+La phase 2 qui se lance automatiquement après la premiere, il faudra que les mots saisies par les joueurs soient placé dans Zone de jeu ne soient visible que par les membres de son équipe et soit ajouter dans la zone de jeu dans le bloc mots interdits par l’équipe.
+Il faudra adapté la taille du texte et des icônes en fonction du nombre de mots paramétré dans les règles.
+
+
+Durant la phase 3, on peut mettre pause avec le bouton si besoin et reprendre le décompte du timer. Durant cette phase, seul les disciple du sage orateur pourrons saisir des mots. L'équipe adverse n’a que la possibilité de cliquer sur le point d'exclamation d’un des mots qu’ils auront piégés.
+
+
+Dans le bloc historique, on doit pouvoir voir les propositions des disciples de l’’équipe adverse pendant la phase 3 et si le mot est trouvé stopper le timer et fait gagner la manche à son équipe. Si l’équipe adverse atteint la limite de mots proposés, une phrase devra dire ;”dommage, il fallait trouver le mot <mot choisi>
+Mais surtout dans historique, on retrouve en gras l’avancement de la partie et des phases exemple:
+“Nouvelle partie démarrée :! GL HF”
+“Début de la première phase”
+“Début de la deuxième phase”
+“Mise en attente pour la troisième phase - Sage Rouge”
+“Le sage rouge à commencer son oration”
+“Mise en attente pour la troisième phase - Sage Bleu”
+“Fin de la manche, <X>points remportés par l’équipe <équipe gagnant la manche> ou Fin de la manche, égalité partout, personne n ‘a de point  (selon les paramètres des règles)?
+et pour le vainqueur, juste mettre Bravo l’équipe <équipe gagnante), vu qu’il y aura déjà un pop up pas besoin d’en faire trop.
+
+
+Il faudrait aussi des bruitages libre de droit pour faire un petit son au début d’une partie / manche / phase, et une pendant le pop-up de l’équipe gagnante. Tu serais me trouver ce genre de jingle sur internet ?
+
+
+Maintenant, passons aux paramétrages des règles, elles sont très simple et sont transmises au serveur backend, donc on peut les récupérer et les appliquer dans la page du salon de jeu. Et c’est pour créer toutes les fonctionnalités via hooks ou autre que j’ai besoin de ton aide.
+________________
+Paramètrage standard
+
+
+Temps des phases
+* • Phase 1 : 20 secondes
+* • Phase 2 : 90 secondes
+* • Phase 3 : 120 secondes
+Équipes
+* • Rerolls : 2
+* • Mots interdits : 6
+* • Propositions : 5
+Points
+* • Score max : 3 points
+* • Pas de point en égalité
+Mots
+* • Mots très courants ✓
+* • Mots moins courants ✓
+* • Mots rarement courants ✗
+
+
+rerolls fait référence au nombre de fois que l’on peut invalider un mot qui est proposé pendant la première phase.
+Mots interdits sont les mots piégés
+¨Proposition sont le nombre de guess que les disciples ont en phase 3
+Score max, score à atteindre pour être le vainqueur
+Pas de point en égalité : si le sage bleu et le sage rouge ont tous les deux réussis à faire deviner leur mot, alors aucune des deux équipes ne remporte de point.
+Mot (en case à coché) sont les fichiers dico.txt dont je parlais au début. C’est comme un niveau de difficulté, ce paramètres indique pendant la phase 1 à partir de quelle liste de mot en tiré un au hasard. Les mots sont dans /src/words et se nomment facile, moyen; difficile, et sont une liste sans séparateur, juste un mot par ligne.
+Les mots faciles sont obligatoires dans tous les cas.
+
+
+Paramétrage personnalisé
+on peut changer chaque timer selon une liste
+on peut choisir le nombre de reroll, de mots interdits et de propositions selon une liste déroulante également.
+Le système de points, y’a 2 paramètres qu’on pourrait appeler tie no tie. En gros soit on choisit tie et dans ce cas à la fin d’une manche, aucune équipe ne gagne de points si les deux sages ont réussis à faire deviner leur mot ou tie qui donne 1 point à l’équipe ayant trouvé le mot de son sage sans prendre en compte le résultat de l’autre équipe (ce qui peut amener du coup à des draws dont je faisais référence plus haut).
+On peut cocher décocher les mots moyen et difficile selon son envie, les mots facile sont obligatoire dans tous les cas.
+
+
+J’aimerai qu’au niveau du code, tout soit bien cadré, par exemple un hooks pour les timers, un hooks pour cela etc … et rendre actif les boutons zone de saisie affichage d’historique.

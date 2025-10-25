@@ -147,23 +147,12 @@ io.on('connection', (socket) => {
         console.log(`[🛑] Suppression de la salle ${roomCode} annulée: un utilisateur existant a rejoint.`);
       }
 
-      // Reset à spectateur par défaut lors du retour sur le salon
-      existingUser.team = 'spectator';
-      existingUser.role = 'spectator';
+      // Garder l'utilisateur existant dans son équipe et rôle actuels
       if (room.gameState) {
-        const gs = room.gameState;
-        gs.spectators = gs.spectators.filter((u) => u?.id !== existingUser.id);
-        gs.teams.red.disciples = gs.teams.red.disciples.filter((u) => u?.id !== existingUser.id);
-        gs.teams.blue.disciples = gs.teams.blue.disciples.filter((u) => u?.id !== existingUser.id);
-        if (gs.teams.red.sage?.id === existingUser.id) gs.teams.red.sage = null;
-        if (gs.teams.blue.sage?.id === existingUser.id) gs.teams.blue.sage = null;
-
-        gs.spectators.push({
-          id: existingUser.id,
-          username: existingUser.username,
-          room: roomCode,
-          team: 'spectator',
-          role: 'spectator',
+        // Ne rien faire ici - on laisse l'utilisateur dans son équipe actuelle
+        console.log(`[REJOINT EXISTANT] ${username} conserve son équipe/rôle actuel:`, {
+          team: existingUser.team,
+          role: existingUser.role,
         });
       }
 

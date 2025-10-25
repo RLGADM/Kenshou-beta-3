@@ -100,6 +100,14 @@ export function useRoomCreatedMain() {
       uiStates.setShowResetModal(false);
     },
 
+    // Nouvelle action pour démarrer la partie avec gestion des phases et timers
+    startGameWithPhases: () => {
+      if (!currentRoom || !socket) return;
+      // Exemple simple: envoi d'un événement socket pour démarrer la phase 1
+      socket.emit('startPhase', { phase: 1, roomCode: currentRoom.code });
+      console.log('Phase 1 démarrée');
+    },
+
     // Données de base (expose le socket global)
     socket,
     currentUser,

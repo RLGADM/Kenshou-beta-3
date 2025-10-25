@@ -7,19 +7,13 @@ export function useRoomTeamActions(
   setTeamJoinError: (error: string | null) => void
 ) {
   // Rejoindre une équipe
-  const joinTeam = (
-    team: 'red' | 'blue' | 'spectator',
-    role?: 'sage' | 'disciple' | 'spectator'
-  ) => {
+  const joinTeam = (team: 'red' | 'blue' | 'spectator', role?: 'sage' | 'disciple' | 'spectator') => {
     if (!socket) {
       setTeamJoinError('Connexion au serveur perdue');
       return;
     }
 
-    const roomCode =
-      localStorage.getItem('roomCode') ||
-      localStorage.getItem('lastRoomCode') ||
-      '';
+    const roomCode = localStorage.getItem('roomCode') || localStorage.getItem('lastRoomCode') || '';
     const userToken = localStorage.getItem('userToken') || '';
     const username =
       localStorage.getItem('username') ||
@@ -39,8 +33,12 @@ export function useRoomTeamActions(
 
     const ack = (resp: { success: boolean; message?: string }) => {
       setIsJoiningTeam(false);
-      if (!resp?.success) {
-        setTeamJoinError(resp?.message || "Erreur lors de la jonction de l’équipe");
+      if (resp?.success) {
+        // Sauvegarder l'équipe et le rôle en cas de succès
+        localStorage.setItem('userTeam', team);
+        localStorage.setItem('userRole', normalizedRole);
+      } else {
+        setTeamJoinError(resp?.message || "Erreur lors de la jonction de l'équipe");
       }
     };
 
@@ -48,11 +46,7 @@ export function useRoomTeamActions(
     if (!roomCode || !userToken) {
       (socket as any).emit('joinTeam', team, normalizedRole, ack);
     } else {
-      socket.emit(
-        'joinTeam',
-        { roomCode, userToken, username, team, role: normalizedRole },
-        ack
-      );
+      socket.emit('joinTeam', { roomCode, userToken, username, team, role: normalizedRole }, ack);
     }
 
     setTimeout(() => {

@@ -53,6 +53,7 @@ io.on('connection', (socket) => {
     const roomCode = generateRoomCode();
     const newRoom = {
       code: roomCode,
+      mode,
       users: [
         {
           id: userToken,

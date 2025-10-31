@@ -1,3 +1,4 @@
+// src/components/SocketContext.tsx
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 
@@ -9,91 +10,69 @@ interface SocketContextValue {
 
 const SocketContext = createContext<SocketContextValue | null>(null);
 
-// --------------------------------------------------
-// 🔌 Détection robuste de l’URL du serveur
-// --------------------------------------------------
-function getServerUrl(): string {
-  try {
-    const hostname = window.location.hostname;
+const getServerUrl = () => {
+  const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  if (isLocal) return 'http://localhost:3000';
 
-    // ✅ Cas 1 : dev local
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      console.log('🌍 Mode développement détecté → backend local');
-      return 'http://localhost:3000';
-    }
+  const env = import.meta.env.VITE_SERVER_URL;
+  if (env && env.trim()) return env;
 
-    // ✅ Cas 2 : URL fournie dans .env
-    const envUrl = import.meta.env.VITE_SERVER_URL?.trim();
-    if (envUrl) {
-      console.log('🌐 Mode production détecté → URL .env utilisée');
-      return envUrl;
-    }
+  console.log('🧭 Fallback → URL Render utilisée');
+  return 'https://kenshou-beta-3.onrender.com';
+};
 
-    // ✅ Cas 3 : fallback
-    console.log('🧭 Fallback → URL Render utilisée');
-    return 'https://kenshou-beta-3.onrender.com';
-  } catch (err) {
-    console.warn('⚠️ Erreur dans getServerUrl, fallback Render utilisé', err);
-    return 'https://kenshou-beta-3.onrender.com';
-  }
-}
+let persistentSocket: Socket | null = null; // 🧠 socket persistante globale
 
-// --------------------------------------------------
-// 🔹 Provider principal
-// --------------------------------------------------
 export function SocketProvider({ children }: { children: React.ReactNode }) {
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const [socket, setSocket] = useState<Socket | null>(persistentSocket);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(true);
 
   useEffect(() => {
-    const SERVER_URL = getServerUrl();
+    // ✅ Empêche la création multiple
+    if (!persistentSocket) {
+      const newSocket = io(getServerUrl(), {
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 2000,
+        timeout: 60000, // tolérance 60s
+        withCredentials: true,
+      });
 
-    console.log(`🌐 Tentative de connexion Socket.IO → ${SERVER_URL}`);
+      persistentSocket = newSocket;
+      setSocket(newSocket);
 
-    const newSocket = io(SERVER_URL, {
-      transports: ['websocket', 'polling'],
-      withCredentials: true,
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      secure: SERVER_URL.startsWith('https'),
-      path: '/socket.io',
-    });
+      newSocket.on('connect', () => {
+        console.log(`✅ Connecté à Socket.IO (${getServerUrl()})`);
+        setIsConnected(true);
+        setIsConnecting(false);
+      });
 
-    setSocket(newSocket);
+      newSocket.on('disconnect', (reason) => {
+        console.warn('🔴 Déconnecté du serveur', reason);
+        setIsConnected(false);
+      });
 
-    newSocket.on('connect', () => {
-      console.log(`✅ Connecté à Socket.IO (${SERVER_URL})`);
-      setIsConnected(true);
+      newSocket.on('connect_error', (err) => {
+        console.error('❌ Erreur connexion Socket.IO :', err.message);
+        setIsConnecting(false);
+      });
+    } else {
+      // 🔗 Réutilise la socket existante si elle existe déjà
+      setSocket(persistentSocket);
+      setIsConnected(persistentSocket.connected);
       setIsConnecting(false);
-    });
+    }
 
-    newSocket.on('disconnect', () => {
-      console.warn('🔴 Déconnecté du serveur');
-      setIsConnected(false);
-    });
-
-    newSocket.on('connect_error', (err) => {
-      console.error('❌ Erreur Socket.IO :', err.message);
-      setIsConnected(false);
-      setIsConnecting(false);
-    });
-
-    // Nettoyage propre
-    return () => {
-      console.log('🧹 Fermeture de la connexion Socket.IO');
-      newSocket.close();
-    };
+    // ❌ Ne ferme jamais la socket dans StrictMode
+    return () => {};
   }, []);
 
   return <SocketContext.Provider value={{ socket, isConnected, isConnecting }}>{children}</SocketContext.Provider>;
 }
 
-// --------------------------------------------------
-// 🔹 Hook utilitaire
-// --------------------------------------------------
-export function useSocketContext(): SocketContextValue {
+export function useSocketContext() {
   const context = useContext(SocketContext);
   if (!context) throw new Error('useSocketContext must be used within a SocketProvider');
   return context;

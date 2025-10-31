@@ -147,7 +147,9 @@ export function useRoomEvents() {
       localStorage.setItem('hasLeftRoom', 'false');
 
       // 🔄 Mets à jour les états globaux
+      console.log('✅ roomCreated reçu →', room);
       setCurrentRoom(room);
+      localStorage.setItem('roomCode', room.code);
       setInRoom(true);
 
       // 🧾 Sécurité : synchronise currentUser

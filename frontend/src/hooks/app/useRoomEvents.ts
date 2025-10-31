@@ -1,13 +1,14 @@
 // --------------------------------------------------
 // 🎮 useRoomEvents — Hook central de la salle Kensho
 // --------------------------------------------------
-// Rôles :
-// 1️⃣ Gérer la connexion socket
-// 2️⃣ Écouter les événements de salle, utilisateurs, messages et jeu
-// 3️⃣ Offrir des actions : createRoom, joinRoom, sendMessage, leaveRoom
+// Gère :
+// 1️⃣ Les événements Socket.IO (create, join, users, messages, game state…)
+// 2️⃣ La synchro avec le localStorage
+// 3️⃣ La redirection vers /room/:code après création ou jointure
 // --------------------------------------------------
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Socket } from 'socket.io-client';
 import { toast } from 'react-hot-toast';
 
@@ -79,6 +80,8 @@ export function useRoomEvents() {
   const socket = ctxSocket ?? localSocket;
   const socketIsConnected = Boolean(socket?.connected) || localIsConnected;
 
+  const navigate = useNavigate();
+
   // 🧠 États React
   const [currentUser, setCurrentUser] = useState<User>(initialUser);
   const [currentRoom, setCurrentRoom] = useState<GameRoom>(initialRoom);
@@ -130,44 +133,27 @@ export function useRoomEvents() {
     if (!socket) return;
 
     // 🏠 Room créée
-    // --------------------------------------------------
-    // 🧩 Lorsqu'une salle est créée avec succès
-    // --------------------------------------------------
     const onRoomCreated = (room: GameRoom) => {
       console.log('✅ roomCreated reçu →', room);
+      if (!room?.code) return console.warn('⚠️ roomCreated sans code valide');
 
-      if (!room?.code) {
-        console.warn('⚠️ roomCreated sans code valide');
-        return;
-      }
-
-      // 🧠 Mémorise immédiatement
+      // 🔄 Stockage local
       localStorage.setItem('roomCode', room.code);
       localStorage.setItem('lastRoomCode', room.code);
       localStorage.setItem('hasLeftRoom', 'false');
+      localStorage.setItem('inRoom', 'true');
 
-      // 🔄 Mets à jour les états globaux
-      console.log('✅ roomCreated reçu →', room);
+      // 🔁 Mise à jour des états
       setCurrentRoom(room);
-      localStorage.setItem('roomCode', room.code);
       setInRoom(true);
 
-      useEffect(() => {
-        if (inRoom) {
-          localStorage.setItem('inRoom', 'true');
-        } else {
-          localStorage.setItem('inRoom', 'false');
-        }
-      }, [inRoom]);
-
-      // 🧾 Sécurité : synchronise currentUser
+      // 👤 Synchroniser currentUser
       const storedToken = localStorage.getItem('userToken');
-      const me = room.users.find((u: any) => u.userToken === storedToken || u.id === storedToken);
-      if (me) {
-        setCurrentUser(me);
-      }
+      const me = room.users.find((u) => u.userToken === storedToken || u.id === storedToken);
+      if (me) setCurrentUser(me);
 
       console.log(`🚀 Salle ${room.code} rejointe automatiquement`);
+      navigate(`/room/${room.code}`); // ✅ redirection immédiate
     };
 
     // 🙋 Rejoint une room
@@ -176,7 +162,10 @@ export function useRoomEvents() {
       setInRoom(true);
       hasJoinedRoomRef.current = true;
       localStorage.setItem('lastRoomCode', room.code);
+      localStorage.setItem('inRoom', 'true');
       toast.success(`Connecté à la salle ${room.code}`);
+
+      navigate(`/room/${room.code}`); // ✅ redirection
     };
 
     // ❌ Room introuvable
@@ -187,13 +176,12 @@ export function useRoomEvents() {
       setTimeout(() => (window.location.href = '/'), 1500);
     };
 
-    // 🚫 Username déjà pris
+    // 🚫 Nom déjà pris
     const onUsernameTaken = () => toast.error('Nom d’utilisateur déjà pris');
 
-    // 👥 Mise à jour des joueurs
+    // 👥 MAJ des utilisateurs
     const onUsersUpdate = (users: User[]) => {
       setCurrentRoom((prev) => ({ ...prev, users }));
-
       const self = userToken ? findSelf(users, userToken) : null;
       if (self) setCurrentUser((prev) => ({ ...prev, ...self }));
     };
@@ -206,12 +194,12 @@ export function useRoomEvents() {
       });
     };
 
-    // 🕹️ Mise à jour du jeu
+    // 🕹️ MAJ état de jeu
     const onGameStateUpdate = (state: GameState) => {
       setCurrentRoom((prev) => ({ ...prev, gameState: state }));
     };
 
-    // 🔗 Liaison socket
+    // 🔗 Liaison Socket.IO
     socket.on('roomCreated', onRoomCreated);
     socket.on('roomJoined', onRoomJoined);
     socket.on('roomNotFound', onRoomNotFound);
@@ -229,7 +217,7 @@ export function useRoomEvents() {
       socket.off('newMessage', onNewMessage);
       socket.off('gameStateUpdate', onGameStateUpdate);
     };
-  }, [socket, userToken, findSelf]);
+  }, [socket, userToken, findSelf, navigate]);
 
   // --------------------------------------------------
   // 🎮 Actions principales

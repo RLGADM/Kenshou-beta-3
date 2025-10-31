@@ -1,19 +1,15 @@
-import { GameParameters } from '../types'; // adapte si tu as un fichier de types
+import { GameParameters } from "@/types";
 
-export function getDefaultParameters(): GameParameters {
-  return {
-    ParametersTimeFirst: 20,
-    ParametersTimeSecond: 90,
-    ParametersTimeThird: 120,
-    ParametersTeamReroll: 2,
-    ParametersTeamMaxForbiddenWords: 6,
-    ParametersTeamMaxPropositions: 5,
-    ParametersPointsMaxScore: 3,
-    ParametersPointsRules: 'no-tie',
-    ParametersWordsListSelection: {
-      veryCommon: true,
-      lessCommon: true,
-      rarelyCommon: false,
-    },
-  };
-}
+export const getDefaultParameters = (): GameParameters => ({
+  numberOfPlayers: 4,
+  numberOfRounds: 5,
+  ParametersTimeFirst: 30,
+  ParametersTimeSecond: 20,
+  ParametersTimeThird: 15,
+  ParametersTeamReroll: 3,
+  ParametersTeamMaxForbiddenWords: 2,
+  ParametersTeamMaxPropositions: 5,
+  ParametersPointsMaxScore: 10,
+  ParametersPointsRules: "no-tie",
+  ParametersWordsListSelection: "medium",
+});

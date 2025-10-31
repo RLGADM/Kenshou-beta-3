@@ -1,9 +1,12 @@
 // --------------- IMPORT
 import { SocketType } from '../../types';
 import { useRef } from 'react';
+import { useRoomGameLogic } from '../room/useRoomGameLogic';
+import { GamePhase } from '../../types/game.ts';
 
 // --------------- Hook pour gérer les actions de jeu
 export function useRoomGameActions(socket: SocketType | null, handleSendMessage: (message: string) => void) {
+  const currentPhaseIndexRef = useRef<GamePhase>({ index: 0, status: 'waiting' }); // Initialiser currentPhaseIndex à 0
   const wasPausedRef = useRef(false);
   const announcedResumeRef = useRef(false);
 
@@ -13,9 +16,10 @@ export function useRoomGameActions(socket: SocketType | null, handleSendMessage:
       console.log('No socket connection for starting game');
       return;
     }
+
+    currentPhaseIndexRef.current = { index: 1, status: 'waiting' }; // Modifie la valeur de currentPhase à 1
     console.log('[FRONT] Emitting startGame', { socketId: socket.id });
-    // Ne pas annoncer ici; l’annonce “Jeu repris” sera faite par onGameStateUpdate
-    socket.emit('startGame');
+    console.log('[FRONT] Phase startGame', { gameState: currentPhaseIndexRef.current });
   };
 
   // Mettre en pause la partie

@@ -6,7 +6,7 @@ import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 // Import local
-import { rooms, users, gameStates } from './utils/store.js';
+import { rooms, users, gameState } from './utils/store.js';
 
 // --- INIT --
 const __filename = fileURLToPath(import.meta.url);
@@ -99,7 +99,7 @@ io.on('connection', (socket) => {
           const r = rooms.get(roomCode);
           if (r && r.users.length === 0) {
             rooms.delete(roomCode);
-            gameStates.delete(roomCode);
+            gameState.delete(roomCode);
             console.log(`🗑️ Salle ${roomCode} supprimée après 5 min sans joueurs`);
           }
           roomDeletionTimers.delete(roomCode);
@@ -412,7 +412,7 @@ io.on('connection', (socket) => {
               const r = rooms.get(user.room);
               if (r && r.users.length === 0) {
                 rooms.delete(user.room);
-                gameStates.delete(user.room);
+                gameState.delete(user.room);
                 console.log(`🗑️ Salle ${user.room} supprimée après 5 min d'inactivité`);
               } else {
                 console.log(`[ℹ️] Salle ${user.room} non supprimée: des utilisateurs ont rejoint entre-temps`);
@@ -498,7 +498,7 @@ function createRoom(roomCode, parameters) {
     gameState: initializeGameState(),
   };
   rooms.set(roomCode, room);
-  gameStates.set(roomCode, room.gameState);
+  gameState.set(roomCode, room.gameState);
   return room;
 }
 

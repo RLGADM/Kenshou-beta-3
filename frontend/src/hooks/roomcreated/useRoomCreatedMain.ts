@@ -1,156 +1,160 @@
-// --------------- IMPORT
-import { useEffect } from 'react';
-import { useRoomEvents } from '../global';
-import { useRoomUIStates } from './useRoomUIStates';
-import { useRoomUtils } from './useRoomUtils';
-import { useRoomTeamActions } from './useRoomTeamActions';
-import { useRoomGameActions } from './useRoomGameActions';
+// --------------------------------------------------
+// 🧩 useRoomCreatedMain — Logique principale d’une salle de jeu Kensho
+// --------------------------------------------------
+
+import { useEffect, useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
+
 import { useSocketContext } from '@/components/SocketContext';
-import type { User, Message } from '@/types';
-// --------------- Hook principal pour RoomCreated
+import { useRoomEvents } from '@/hooks/app/useRoomEvents';
+import { useGameState } from '@/hooks/game/useGameState';
+import { getDefaultParameters } from '@/utils/defaultParameters';
+import type { GameParameters, User } from '@/types';
+
+// --------------------------------------------------
+// 🔹 Hook principal
+// --------------------------------------------------
 export function useRoomCreatedMain() {
-  // Hook principal de la room (depuis votre architecture globale)
-  const {
-    socket: _unusedLocalSocket,
-    currentUser,
-    currentRoom,
-    handleSendMessage,
-    leaveRoom,
-    hasJoinedRoomRef,
-    hasRejoinAttempted,
-    setCurrentRoom,
-    handleJoinRoom,
-    inRoom,
-  } = useRoomEvents();
   const navigate = useNavigate();
   const { socket } = useSocketContext();
+  const { inRoom, currentRoom } = useRoomEvents();
 
-  // États UI
-  const uiStates = useRoomUIStates();
+  // --- États internes ---
+  const [proposal, setProposal] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
 
-  // Utilitaires
-  const utils = useRoomUtils();
+  // --- Paramètres du jeu ---
+  const gameParameters: GameParameters = currentRoom?.gameParameters ?? getDefaultParameters();
 
-  // Actions d'équipes (branchées sur le socket global)
-  // Actions d'équipes: câble avec les setters UI depuis uiStates
-  const teamActions = useRoomTeamActions(socket, uiStates.setIsJoiningTeam, uiStates.setTeamJoinError);
+  // --- Logique du jeu ---
+  const {
+    gameState,
+    startGame: baseStartGame,
+    pauseGame: basePauseGame,
+    resetToWaitingPhase,
+  } = useGameState({ parameters: gameParameters });
 
-  // Actions de jeu (branchées sur le socket global)
-  const gameActions = useRoomGameActions(socket, handleSendMessage);
-
-  // Effet pour nettoyer l'état isJoiningTeam quand l'utilisateur rejoint effectivement une équipe
+  // --------------------------------------------------
+  // 🧭 Redirection si le joueur quitte la salle
+  // --------------------------------------------------
   useEffect(() => {
-    if (currentUser && currentUser.team) {
-      uiStates.setIsJoiningTeam(false);
-      uiStates.clearTeamJoinError();
+    if (!inRoom || !currentRoom?.code) {
+      toast('🚪 Déconnexion de la salle...');
+      navigate('/');
     }
-  }, [currentUser?.team]);
+  }, [inRoom, currentRoom, navigate]);
 
-  // Écoute `usersUpdate` sur le socket global pour alimenter le compteur joueurs
-  useEffect(() => {
-    if (!socket) return;
-    const onUsersUpdate = (users: User[]) => {
-      setCurrentRoom((prev) => ({ ...prev, users }));
-    };
-    socket.on('usersUpdate', onUsersUpdate);
-    return () => {
-      socket.off('usersUpdate', onUsersUpdate);
-    };
-  }, [socket, setCurrentRoom]);
+  // --------------------------------------------------
+  // 🕹️ Contrôles du jeu
+  // --------------------------------------------------
 
-  // Permissions utilisateur
-  const permissions = currentUser ? utils.checkPermissions(currentUser) : { isAdmin: false, canControlGame: false };
+  const startGame = useCallback(() => {
+    if (!socket || !currentRoom) return;
 
-  // Actions combinées avec les utilitaires
-  const enhancedActions = {
-    ...gameActions,
-    ...teamActions,
-    // Mettre les utilitaires AVANT pour éviter d'écraser la copie locale
-    ...utils,
+    if (gameState.isPlaying) {
+      console.log('[Game] Déjà en cours');
+      return;
+    }
 
-    // Action pour copier le lien avec gestion de l'état (sans argument)
-    copyRoomLink: () => {
-      const code = currentRoom?.code;
-      if (typeof code === 'string' && code) {
-        utils.copyRoomLink(code, uiStates.setCopied);
-      } else {
-        console.warn('Room code indisponible ou invalide pour la copie:', code);
-      }
+    console.log('[Game] ▶️ Start game');
+    socket.emit('startGame', { roomCode: currentRoom.code });
+    baseStartGame();
+  }, [socket, currentRoom, baseStartGame, gameState.isPlaying]);
+
+  const pauseGame = useCallback(() => {
+    if (!socket || !currentRoom) return;
+    console.log('[Game] ⏸ Pause');
+    socket.emit('pauseGame', { roomCode: currentRoom.code });
+    basePauseGame();
+  }, [socket, currentRoom, basePauseGame]);
+
+  const resetGame = useCallback(() => {
+    if (!socket || !currentRoom) return;
+    console.log('[Game] 🔁 Reset');
+    socket.emit('resetGame', { roomCode: currentRoom.code });
+    resetToWaitingPhase();
+    setShowResetModal(false);
+  }, [socket, currentRoom, resetToWaitingPhase]);
+
+  // --------------------------------------------------
+  // 💬 Gestion des propositions (phase 3)
+  // --------------------------------------------------
+  const sendProposal = useCallback(
+    (text: string) => {
+      if (!socket || !currentRoom || !text.trim()) return;
+      socket.emit('sendProposal', { roomCode: currentRoom.code, text });
+      setProposal('');
     },
+    [socket, currentRoom]
+  );
 
-    // Envoyer proposition avec nettoyage automatique
-    sendProposal: () => {
-      gameActions.sendProposal(uiStates.proposal, uiStates.clearProposal);
-    },
+  // --------------------------------------------------
+  // 🚪 Quitter la salle
+  // --------------------------------------------------
+  const handleLeaveRoom = useCallback(() => {
+    if (!socket || !currentRoom) return;
+    socket.emit('leaveRoom', { roomCode: currentRoom.code });
+    navigate('/');
+  }, [socket, currentRoom, navigate]);
 
-    // Quitter la room avec nettoyage
-    handleLeaveRoom: () => {
-      leaveRoom();
-      hasJoinedRoomRef.current = false;
-      hasRejoinAttempted.current = false;
-      localStorage.setItem('hasLeftRoom', 'yes');
-      localStorage.removeItem('lastRoomCode');
-      navigate('/'); // redirection vers l’accueil
-    },
+  // --------------------------------------------------
+  // ⏱️ Format du timer (mm:ss)
+  // --------------------------------------------------
+  const formatTimer = useCallback((seconds: number): string => {
+    const min = Math.floor(seconds / 60)
+      .toString()
+      .padStart(2, '0');
+    const sec = Math.floor(seconds % 60)
+      .toString()
+      .padStart(2, '0');
+    return `${min}:${sec}`;
+  }, []);
 
-    // Gérer reset avec fermeture de modal
-    handleResetGame: () => {
-      gameActions.resetGame();
-      uiStates.setShowResetModal(false);
-    },
+  // --------------------------------------------------
+  // 🔐 Permissions
+  // --------------------------------------------------
+  const currentUser = currentRoom?.users?.find((u: User) => u.isAdmin) ?? null;
+  const permissions = { canStartGame: !!currentUser?.isAdmin };
 
-    // Nouvelle action pour démarrer la partie avec gestion des phases et timers
-    startGameWithPhases: () => {
-      if (!currentRoom || !socket) return;
-      // Exemple simple: envoi d'un événement socket pour démarrer la phase 1
-      socket.emit('startPhase', { phase: 1, roomCode: currentRoom.code });
-      console.log('Phase 1 démarrée');
-    },
+  // --------------------------------------------------
+  // 🔄 Gestion du reset modal
+  // --------------------------------------------------
+  const handleResetGame = useCallback(() => {
+    if (!socket || !currentRoom) return;
+    socket.emit('resetGame', { roomCode: currentRoom.code });
+    setShowResetModal(false);
+    toast.success('Partie réinitialisée !');
+  }, [socket, currentRoom]);
 
-    // Données de base (expose le socket global)
-    socket,
-    currentUser,
-    currentRoom,
+  // --------------------------------------------------
+  // 📦 Retour du hook
+  // --------------------------------------------------
+  return {
+    // État de la salle
     inRoom,
+    currentRoom,
+    currentUser,
     permissions,
 
-    // Expose pour le modal pseudo
-    handleJoinRoom,
+    // États UI
+    proposal,
+    setProposal,
+    copied,
+    setCopied,
+    showResetModal,
+    setShowResetModal,
 
-    // États UI (inclut isJoiningTeam, teamJoinError, etc.)
-    ...uiStates,
+    // Utilitaires
+    formatTimer,
+
+    // Actions jeu
+    startGame,
+    pauseGame,
+    resetGame,
+    sendProposal,
+    handleLeaveRoom,
+    handleResetGame,
   };
-
-  // Hydrater le code de la room depuis le localStorage pour cette instance
-  useEffect(() => {
-    const storedRoomCode = localStorage.getItem('roomCode') || localStorage.getItem('lastRoomCode');
-    if (storedRoomCode && !currentRoom.code) {
-      setCurrentRoom((prev) => ({ ...prev, code: storedRoomCode }));
-    }
-  }, [currentRoom.code, setCurrentRoom]);
-
-  // Fallback front-only: assurer la présence/actualisation du message de bienvenue
-  useEffect(() => {
-    const text = '✦ Bienvenue dans Kensho ✦ Le but est avant tout de s\'amuser, donc bonne partie à vous ! ✦';
-    setCurrentRoom((prev) => {
-      const list = prev.messages || [];
-      const idx = list.findIndex((m: Message) => m.id === 'sys-welcome');
-      if (idx >= 0) {
-        const nextItem: Message = { ...list[idx], username: 'Winry', message: text };
-        const next = [...list];
-        next[idx] = nextItem;
-        return { ...prev, messages: next };
-      }
-      const welcomeMsg: Message = {
-        id: 'sys-welcome',
-        username: 'Winry',
-        message: text,
-        timestamp: new Date(),
-      };
-      return { ...prev, messages: [...list, welcomeMsg] };
-    });
-  }, [currentRoom?.code]);
-
-  return enhancedActions;
 }

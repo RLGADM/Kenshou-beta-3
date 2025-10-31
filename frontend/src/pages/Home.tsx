@@ -1,92 +1,96 @@
-// --------------- IMPORT
+// --------------------------------------------------
+// 🏠 Page d'accueil Kensho
+// --------------------------------------------------
 
-// Déclaration import framework
 import React, { useEffect, useState } from 'react';
 import { Plus, LogIn, Sparkles, Wifi } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-// Déclaration fichiers projets
 import GameConfigModal from '@/components/GameConfigModal';
-// Déclaration via hooks
-import { useHomeHandlers } from '@/hooks';
-// Import logo (chemin public pour éviter 404 en prod)
-import logo from '../assets/logo.png';
+import { useHomeHandlers } from '@/hooks/global/useHomeHandlers';
+import logo from '@/assets/logo.png';
+import { getDefaultParameters } from '@/utils/defaultParameters';
 
-// Déclaration const
-
-function Home() {
-  // Déclaration const locales
+// --------------------------------------------------
+// 🔹 Composant principal
+// --------------------------------------------------
+const Home: React.FC = () => {
+  // --- LocalStorage : récupération du dernier pseudo
   const storedUsername = localStorage.getItem('lastUsername');
   const initialUsername = storedUsername ? JSON.parse(storedUsername) : '';
-  const navigate = useNavigate();
 
-  // const via hooks
+  // --- Hook centralisé
+  const navigate = useNavigate();
   const {
     socketIsConnected,
     username,
     setUsername,
     inRoom,
     roomCode,
-    //setRoomCode, //inutile car récupérer de currentRoom
-    //redéclaration du inputRoomCode en useState
     inputRoomCode,
     setInputRoomCode,
     isCreating,
     isJoining,
     isConfigModalOpen,
     setConfigModalOpen,
-    //handleCreate,
     handleJoin,
     handleConfigConfirm,
-    //gameMode,
-    //parameters,
+    startRoom,
     error,
-    //setError,
   } = useHomeHandlers(initialUsername);
 
-  //navigate
+  // --------------------------------------------------
+  // 🔁 Navigation automatique si joueur déjà en salle
+  // --------------------------------------------------
   useEffect(() => {
-    console.log('1 ', inRoom, '2 ', roomCode, '3', localStorage.getItem('hasLeftRoom'));
-    if (inRoom && roomCode) {
-      console.log('3 ', inRoom, '4 ', roomCode, '3', localStorage.getItem('hasLeftRoom'));
+    if (inRoom && roomCode && localStorage.getItem('hasLeftRoom') !== 'true') {
       navigate(`/room/${roomCode}`);
     }
-  }, [inRoom, roomCode]);
+  }, [inRoom, roomCode, navigate]);
 
+  // --------------------------------------------------
+  // 🧠 Synchronisation du token / état local
+  // --------------------------------------------------
   useEffect(() => {
     const userToken = localStorage.getItem('userToken');
     const lastRoomCode = localStorage.getItem('lastRoomCode');
-
-    if (userToken && !lastRoomCode) {
-      localStorage.setItem('hasLeftRoom', 'false');
-    }
+    if (userToken && !lastRoomCode) localStorage.setItem('hasLeftRoom', 'false');
   }, []);
 
+  // --------------------------------------------------
+  // 🖼️ Logo fallback
+  // --------------------------------------------------
   const [useFallbackLogo, setUseFallbackLogo] = useState(false);
   const fallbackLogo =
     'data:image/svg+xml;utf8,' +
     encodeURIComponent(
       `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">
-              <defs>
-                  <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
-                      <stop offset="0%" stop-color="#4f46e5"/>
-                      <stop offset="100%" stop-color="#a855f7"/>
-                  </linearGradient>
-              </defs>
-              <rect width="80" height="80" rx="12" fill="url(#g)"/>
-              <text x="50%" y="55%" font-family="Montserrat, sans-serif" font-size="34" font-weight="800" fill="#fff" text-anchor="middle">K</text>
-          </svg>`
+        <defs>
+          <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0%" stop-color="#4f46e5"/>
+            <stop offset="100%" stop-color="#a855f7"/>
+          </linearGradient>
+        </defs>
+        <rect width="80" height="80" rx="12" fill="url(#g)"/>
+        <text x="50%" y="55%" font-family="Montserrat, sans-serif" font-size="34" font-weight="800" fill="#fff" text-anchor="middle">K</text>
+      </svg>`
     );
+
+  // --------------------------------------------------
+  // 🎨 Rendu JSX
+  // --------------------------------------------------
   return (
     <div
       className="min-h-screen relative overflow-hidden"
       style={{ background: 'linear-gradient(to bottom right, #00355a, #8accfd)' }}
     >
+      {/* 🔹 Modal de configuration de partie */}
       <GameConfigModal
         isOpen={isConfigModalOpen}
         onClose={() => setConfigModalOpen(false)}
         onConfirm={(mode, params) => handleConfigConfirm(username, mode, params)}
       />
 
+      {/* 🔹 Indicateur de connexion serveur */}
       <div className="absolute top-4 right-4 z-20">
         <div
           className={`inline-flex items-center space-x-2 px-3 py-1 rounded-full text-sm font-medium backdrop-blur-sm ${
@@ -103,8 +107,10 @@ function Home() {
         </div>
       </div>
 
+      {/* 🔹 Bloc principal */}
       <div className="relative z-10 flex items-center justify-center min-h-screen p-4">
         <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-6 w-full max-w-sm border border-white/20">
+          {/* Logo et titre */}
           <div className="text-center mb-6">
             <div className="relative mb-4">
               <div className="w-20 h-20 mx-auto flex items-center justify-center">
@@ -125,18 +131,20 @@ function Home() {
             >
               KENSHO
             </h1>
-            <p className="text-gray-700 text-lg font-medium mb-4">L'art de l'esquivation !</p>
+            <p className="text-gray-700 text-lg font-medium mb-4">L'art de l’esquivation !</p>
           </div>
 
+          {/* Message d’erreur */}
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
               <p className="text-red-800 text-sm font-medium mb-2">{error}</p>
             </div>
           )}
 
+          {/* 🔹 Formulaire de création de salle */}
           <form className="space-y-4 mb-6">
             <div className="mb-6">
-              <label htmlFor="username" className="block text-sm font-semibold text-gray-700 mb-2">
+              <label htmlFor="username" className="block text-sm text-black font-semibold mb-2">
                 Votre pseudo
               </label>
               <input
@@ -145,7 +153,7 @@ function Home() {
                 value={username ?? ''}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Entrez votre pseudo"
-                className={`w-full px-4 py-4 rounded-xl border transition-all duration-200 bg-gray-50/50 font-medium focus:outline-none focus:ring-2 ${
+                className={`text-black w-full px-4 py-4 rounded-xl border transition-all duration-200 bg-gray-50/50 font-medium focus:outline-none focus:ring-2 ${
                   error?.toLowerCase().includes('pseudo')
                     ? 'border-red-500 focus:ring-red-400'
                     : 'border-gray-200 focus:ring-blue-500'
@@ -158,7 +166,10 @@ function Home() {
 
             <button
               type="button"
-              onClick={() => setConfigModalOpen(true)}
+              onClick={() => {
+                if (!username.trim()) return alert('Entrez un pseudo avant de créer une salle');
+                setConfigModalOpen(true);
+              }}
               disabled={!username.trim() || isCreating || !socketIsConnected}
               className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-4 rounded-xl font-semibold flex items-center justify-center space-x-2 hover:from-blue-700 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
             >
@@ -167,16 +178,7 @@ function Home() {
             </button>
           </form>
 
-          {/* {!import.meta.env.PROD && (
-            <button
-              onClick={onDemoMode}
-              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-4 rounded-xl font-semibold flex items-center justify-center space-x-2 hover:from-purple-700 hover:to-pink-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 mb-6"
-            >
-              <Sparkles className="w-5 h-5" />
-              <span>Mode Démo</span>
-            </button>
-          )} */}
-
+          {/* 🔹 Formulaire de connexion à une room */}
           <form onSubmit={handleJoin} className="space-y-4">
             <div>
               <label htmlFor="roomCode" className="block text-sm font-semibold text-gray-700 mb-2">
@@ -188,7 +190,7 @@ function Home() {
                 value={inputRoomCode}
                 onChange={(e) => setInputRoomCode(e.target.value.toUpperCase())}
                 placeholder="Ex: ABC123"
-                className="w-full px-4 py-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 font-mono text-center text-lg font-bold bg-gray-50/50 tracking-wider"
+                className="text-black w-full px-4 py-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 font-mono text-center text-lg font-bold bg-gray-50/50 tracking-wider"
                 maxLength={6}
                 disabled={!socketIsConnected}
               />
@@ -206,6 +208,6 @@ function Home() {
       </div>
     </div>
   );
-}
+};
 
 export default Home;

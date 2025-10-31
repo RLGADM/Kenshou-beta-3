@@ -1,155 +1,109 @@
 import { useState, useCallback } from 'react';
-import { GameState, GameRound } from '@/types/game';
+import type { GameParameters, GameRound, GameState } from '@/types/game';
+import { getDefaultParameters } from '@/utils/defaultParameters';
 
-interface GameStateParams {
-  maxScore: number;
-  pointsOnTie: boolean;
-  maxForbiddenWords: number;
-  maxGuesses: number;
-  maxPasses: number;
-  timers: {
-    phase1: number;
-    phase2: number;
-    phase3: number;
-  };
-}
-
-const createInitialGameRound = (maxPasses: number): GameRound => ({
+// --------------------------------------------------
+// 🧠 Création du round initial
+// --------------------------------------------------
+const createInitialGameRound = (): GameRound => ({
   index: 1,
-  currentPhase: {
-    index: 1,
-    status: 'waiting',
-  },
+  phases: [], // tu pourras y insérer les 3 phases si besoin plus tard
+  currentPhase: { index: 0, name: 'En attente', status: 'En attente' },
+  redTeamWord: '', // ✅ obligatoire maintenant
+  blueTeamWord: '', // ✅ idem
   redTeamForbiddenWords: [],
   blueTeamForbiddenWords: [],
-  // passes left for rerolls per round
-  redTeamPassesLeft: maxPasses,
-  blueTeamPassesLeft: maxPasses,
 });
 
-const createInitialGameState = (maxPasses: number): GameState => ({
+// --------------------------------------------------
+// ⚙️ Création de l’état initial du jeu
+// --------------------------------------------------
+const createInitialGameState = (parameters: GameParameters): GameState => ({
   isPlaying: false,
-  currentRound: createInitialGameRound(maxPasses),
-  scores: {
-    red: 0,
-    blue: 0,
-  },
-  currentTeam: 'red',
-  remainingGuesses: 5,
-  isPaused: false,
+  currentRound: createInitialGameRound(),
+  scores: { red: 0, blue: 0 },
+  remainingGuesses: parameters.ParametersTeamMaxPropositions,
+  winner: undefined,
 });
 
-export const useGameState = (params: GameStateParams) => {
-  const [gameState, setGameState] = useState<GameState>(() => createInitialGameState(params.maxPasses));
+// --------------------------------------------------
+// 🪄 Hook principal : useGameState
+// --------------------------------------------------
+export const useGameState = (params?: { parameters?: GameParameters }) => {
+  const parameters = params?.parameters ?? getDefaultParameters();
 
+  const [gameState, setGameState] = useState<GameState>(() => createInitialGameState(parameters));
+
+  // --------------------------------------------------
+  // 🎮 Fonctions principales
+  // --------------------------------------------------
+
+  // 🔸 Démarrage complet d’une partie
   const startGame = useCallback(() => {
-    setGameState({
-      ...createInitialGameState(params.maxPasses),
-      isPlaying: true,
-      remainingGuesses: params.maxGuesses,
-    });
-  }, [params.maxGuesses, params.maxPasses]);
+    setGameState(createInitialGameState(parameters));
+  }, [parameters]);
 
+  // 🔸 Démarrage d’une phase (1 à 3)
   const startPhase = useCallback((phase: 1 | 2 | 3) => {
     setGameState((prev) => ({
       ...prev,
       currentRound: {
         ...prev.currentRound,
-        currentPhase: {
-          index: phase,
-          status: 'in-progress',
-        },
+        currentPhase: { index: phase, name: getPhaseName(phase), status: 'En cours' },
       },
-      isPaused: false,
+      isPlaying: true,
     }));
   }, []);
 
+  // 🔸 Pause / Reprise
   const pauseGame = useCallback(() => {
-    setGameState((prev) => ({ ...prev, isPaused: true, isPlaying: false }));
+    setGameState((prev) => ({ ...prev, isPlaying: false }));
   }, []);
 
   const resumeGame = useCallback(() => {
-    setGameState((prev) => ({ ...prev, isPaused: false, isPlaying: true }));
+    setGameState((prev) => ({ ...prev, isPlaying: true }));
   }, []);
 
+  // 🔸 Ajouter un point
   const addPoint = useCallback((team: 'red' | 'blue') => {
     setGameState((prev) => ({
       ...prev,
-      scores: {
-        ...prev.scores,
-        [team]: prev.scores[team] + 1,
-      },
+      scores: { ...prev.scores, [team]: prev.scores[team] + 1 },
     }));
   }, []);
 
-  const nextTeam = useCallback(() => {
-    setGameState((prev) => ({
-      ...prev,
-      currentTeam: prev.currentTeam === 'red' ? 'blue' : 'red',
-      remainingGuesses: params.maxGuesses,
-    }));
-  }, [params.maxGuesses]);
-
+  // 🔸 Passer au round suivant
   const nextRound = useCallback(() => {
     setGameState((prev) => ({
       ...prev,
       currentRound: {
         index: prev.currentRound.index + 1,
-        currentPhase: {
-          index: 1,
-          status: 'waiting',
-        },
+        phases: [],
+        currentPhase: { index: 0, name: 'En attente', status: 'En attente' },
+        redTeamWord: '',
+        blueTeamWord: '',
         redTeamForbiddenWords: [],
         blueTeamForbiddenWords: [],
-        redTeamPassesLeft: params.maxPasses,
-        blueTeamPassesLeft: params.maxPasses,
       },
-      currentTeam: 'red',
-      remainingGuesses: params.maxGuesses,
+      remainingGuesses: parameters.ParametersTeamMaxPropositions,
     }));
-  }, [params.maxGuesses]);
+  }, [parameters]);
 
-  const tryConsumeReroll = useCallback((team: 'red' | 'blue') => {
-    let allowed = false;
-    setGameState((prev) => {
-      const key = team === 'red' ? 'redTeamPassesLeft' : 'blueTeamPassesLeft';
-      const current = prev.currentRound[key as keyof typeof prev.currentRound] as number;
-
-      // Vérifier si des rerolls sont disponibles
-      if (current === undefined || current <= 0) {
-        console.warn(`No rerolls left for team ${team}`);
-        return prev;
-      }
-
-      allowed = true;
-      return {
-        ...prev,
-        currentRound: {
-          ...prev.currentRound,
-          [key]: current - 1,
-        },
-      };
-    });
-    return allowed;
-  }, []);
-
+  // 🔸 Définir le mot choisi par une équipe
   const setWord = useCallback((team: 'red' | 'blue', word: string) => {
     setGameState((prev) => ({
       ...prev,
-      currentRound: {
-        ...prev.currentRound,
-        [team === 'red' ? 'redTeamWord' : 'blueTeamWord']: word,
-      },
+      currentRound: { ...prev.currentRound, [`${team}TeamWord`]: word } as GameRound,
     }));
   }, []);
 
+  // 🔸 Ajouter un mot interdit
   const addForbiddenWord = useCallback(
     (team: 'red' | 'blue', word: string) => {
       setGameState((prev) => {
         const key = team === 'red' ? 'redTeamForbiddenWords' : 'blueTeamForbiddenWords';
         const currentWords = prev.currentRound[key];
-        if (currentWords.length >= params.maxForbiddenWords) return prev;
-
+        if (currentWords.length >= parameters.ParametersTeamMaxForbiddenWords) return prev;
         return {
           ...prev,
           currentRound: {
@@ -159,9 +113,10 @@ export const useGameState = (params: GameStateParams) => {
         };
       });
     },
-    [params.maxForbiddenWords]
+    [parameters]
   );
 
+  // 🔸 Supprimer un mot interdit
   const removeForbiddenWord = useCallback((team: 'red' | 'blue', index: number) => {
     setGameState((prev) => {
       const key = team === 'red' ? 'redTeamForbiddenWords' : 'blueTeamForbiddenWords';
@@ -175,6 +130,7 @@ export const useGameState = (params: GameStateParams) => {
     });
   }, []);
 
+  // 🔸 Décrémenter les essais restants (phase 3)
   const decrementGuesses = useCallback(() => {
     setGameState((prev) => ({
       ...prev,
@@ -182,34 +138,46 @@ export const useGameState = (params: GameStateParams) => {
     }));
   }, []);
 
-  // Permet de remettre la phase en 'waiting' (fermer le modal sans avancer)
-  const finishPhase = useCallback(() => {
+  // 🔸 Réinitialiser la partie
+  const resetToWaitingPhase = useCallback(() => {
     setGameState((prev) => ({
-      ...prev,
-      currentRound: {
-        ...prev.currentRound,
-        currentPhase: {
-          index: prev.currentRound.currentPhase.index,
-          status: 'waiting',
-        },
-      },
+      ...createInitialGameState(parameters),
+      scores: prev.scores, // garde les scores existants
     }));
-  }, []);
+  }, [parameters]);
 
+  // --------------------------------------------------
+  // 🧩 Helper : nom de phase lisible
+  // --------------------------------------------------
+  const getPhaseName = (phase: 1 | 2 | 3): GameRound['currentPhase']['name'] => {
+    switch (phase) {
+      case 1:
+        return 'Choix du mot';
+      case 2:
+        return 'Mots interdits';
+      case 3:
+        return 'Oratoire';
+      default:
+        return 'En attente';
+    }
+  };
+
+  // --------------------------------------------------
+  // 🎯 Retour
+  // --------------------------------------------------
   return {
     gameState,
+    setGameState,
     startGame,
     startPhase,
     pauseGame,
     resumeGame,
     addPoint,
-    nextTeam,
     nextRound,
     setWord,
     addForbiddenWord,
     removeForbiddenWord,
     decrementGuesses,
-    finishPhase,
-    tryConsumeReroll,
+    resetToWaitingPhase,
   };
 };

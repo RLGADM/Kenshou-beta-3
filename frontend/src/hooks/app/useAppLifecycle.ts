@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import type { Socket } from 'socket.io-client';
 
+
 // Log Socket
 export function useSocketInitializer(socket: Socket | null) {
   useEffect(() => {

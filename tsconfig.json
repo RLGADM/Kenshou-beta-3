@@ -13,7 +13,13 @@
     "baseUrl": ".",
     "paths": {
       "@frontend/*": ["frontend/src/*"],
-      "@backend/*": ["backend/src/*"]
+      "@backend/*": ["backend/src/*"],
+
+      "@/*": ["frontend/src/*"],
+      "@hooks/*": ["frontend/src/hooks/*"],
+      "@utils/*": ["frontend/src/utils/*"],
+      "@types/*": ["frontend/src/types/*"],
+      "@components/*": ["frontend/src/components/*"]
     }
   },
   "include": ["frontend/src", "backend/src"],

@@ -28,12 +28,6 @@ const io = new Server(server, {
 const rooms = {};
 const pendingDisconnects = new Map(); // socketId -> timeout
 
-function generateRoomCode() {
-  /* ta logique */
-}
-function getInitialGameState(params) {
-  /* ta logique */
-}
 // removeUserFromRooms: remplace par version robuste ci-dessous
 
 function removeUserFromRoomsBySocket(socketId) {

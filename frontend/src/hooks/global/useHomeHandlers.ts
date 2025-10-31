@@ -11,14 +11,15 @@ export function useHomeHandlers(initialUsername = '') {
   // --------------------------------------------------
   const { socket } = useSocketContext();
   const { currentRoom, handleCreateRoom, handleJoinRoom } = useRoomEvents();
-  // localStorage inRoom
-    const [inRoom, setInRoom] = useState(localStorage.getItem('inRoom') === 'true');
-    useEffect(() => {
+
+  // --------------------------------------------------
+  // 🔹 États locaux et persistance inRoom
+  // --------------------------------------------------
+  const [inRoom, setInRoom] = useState(localStorage.getItem('inRoom') === 'true');
+  useEffect(() => {
     localStorage.setItem('inRoom', inRoom ? 'true' : 'false');
   }, [inRoom]);
-  // --------------------------------------------------
-  // 🔹 États locaux
-  // --------------------------------------------------
+
   const [username, setUsername] = useState(initialUsername);
   const [inputRoomCode, setInputRoomCode] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -46,17 +47,9 @@ export function useHomeHandlers(initialUsername = '') {
 
     try {
       setIsCreating(true);
-      try {
-      setIsCreating(true);
       handleCreateRoom(socket, username.trim(), gameMode, parameters);
       localStorage.setItem('lastUsername', JSON.stringify(username));
       setInRoom(true); // ✅ on entre dans une room
-    } catch (err) {
-      console.error('Erreur lors de la création du salon:', err);
-    }
-
-      handleCreateRoom(socket, username.trim(), gameMode, parameters);
-      localStorage.setItem('lastUsername', JSON.stringify(username));
     } catch (err) {
       console.error('Erreur lors de la création du salon:', err);
       setError('Erreur lors de la création du salon.');
@@ -99,27 +92,19 @@ export function useHomeHandlers(initialUsername = '') {
       }
 
       try {
-      setIsJoining(true);
-      await handleJoinRoom(socket, finalUsername, finalRoomCode);
-      localStorage.setItem('lastUsername', JSON.stringify(finalUsername));
-      setInRoom(true); // ✅ on rejoint une room
-    } catch (err) {
-      console.error('Erreur lors de la connexion à la salle:', err);
-    }
-
-  //     try {
-  //       setIsJoining(true);
-  //       await handleJoinRoom(socket, finalUsername, finalRoomCode);
-  //       localStorage.setItem('lastUsername', JSON.stringify(finalUsername));
-  //     } catch (err) {
-  //       console.error('Erreur lors de la connexion à la salle:', err);
-  //       setError('Impossible de rejoindre le salon.');
-  //     } finally {
-  //       setIsJoining(false);
-  //     }
-  //   },
-  //   [socket, socketIsConnected, username, inputRoomCode, handleJoinRoom]
-  // );
+        setIsJoining(true);
+        await handleJoinRoom(socket, finalUsername, finalRoomCode);
+        localStorage.setItem('lastUsername', JSON.stringify(finalUsername));
+        setInRoom(true); // ✅ on rejoint une room
+      } catch (err) {
+        console.error('Erreur lors de la connexion à la salle:', err);
+        setError('Impossible de rejoindre le salon.');
+      } finally {
+        setIsJoining(false);
+      }
+    },
+    [socket, socketIsConnected, username, inputRoomCode, handleJoinRoom]
+  );
 
   // --------------------------------------------------
   // ⚙️ Confirmation du modal de configuration
@@ -139,13 +124,30 @@ export function useHomeHandlers(initialUsername = '') {
         setError('Connexion au serveur requise.');
         return;
       }
+
       console.log('avant create room');
       handleCreateRoom(socket, providedUsername.trim(), selectedMode, selectedParameters);
       console.log('apres create room');
       localStorage.setItem('lastUsername', JSON.stringify(providedUsername));
+      setInRoom(true);
     },
     [socket, handleCreateRoom]
   );
+
+  // --------------------------------------------------
+  // ⚙️ Reconnexion automatique si inRoom = true
+  // --------------------------------------------------
+  useEffect(() => {
+    if (socket?.connected && inRoom) {
+      const username = JSON.parse(localStorage.getItem('lastUsername') || '""');
+      const userToken = localStorage.getItem('userToken');
+      const lastRoomCode = localStorage.getItem('lastRoomCode');
+      if (username && userToken && lastRoomCode) {
+        console.log(`♻️ Tentative de reconnexion à ${lastRoomCode}`);
+        handleJoinRoom(socket, username, lastRoomCode);
+      }
+    }
+  }, [socket, inRoom, handleJoinRoom]);
 
   // --------------------------------------------------
   // 📦 Exports publics
@@ -157,17 +159,18 @@ export function useHomeHandlers(initialUsername = '') {
 
     // Utilisateur et room
     inRoom,
+    setInRoom,
     roomCode,
     username,
     setUsername,
 
     // Création et jointure
-    startRoom, // ✅ désormais disponible
+    startRoom,
     handleCreate,
     handleJoin,
     handleConfigConfirm,
 
-    //inputs
+    // Inputs
     inputRoomCode,
     setInputRoomCode,
 

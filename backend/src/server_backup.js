@@ -600,7 +600,7 @@ function handleTeamJoin(userId, roomCode, team, role) {
 
   return { success: true, gameState: room.gameState };
 }
-//TODO peut être utile plus tard
+
 // function emitIfNotSilent(socket, event, data, options = { silent: false }) {
 //   if (!options.silent) {
 //     socket.emit(event, data);

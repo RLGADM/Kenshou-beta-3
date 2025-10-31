@@ -1,17 +1,12 @@
-// --------------------------------------------------
-// ⚙️ IMPORTS ET CONFIG
-// --------------------------------------------------
+// server.js (ou src/server.js) - extrait pertinent
 import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 
-// --------------------------------------------------
-// 🧩 SETUP EXPRESS + SOCKET.IO
-// --------------------------------------------------
 const app = express();
 const server = createServer(app);
-// Youpi CORS configuration
+
 const allowedOrigins = [
   'http://localhost:5173',
   'https://kensho-beta.netlify.app',
@@ -21,54 +16,55 @@ const allowedOrigins = [
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 
+// options: augmenter pingInterval / pingTimeout
 const io = new Server(server, {
   cors: { origin: allowedOrigins, methods: ['GET', 'POST'], credentials: true },
+  pingInterval: 20000, // serveur ping client every 20s
+  pingTimeout: 60000, // wait 60s for pong before disconnect
+  allowEIO3: false,
 });
 
-// --------------------------------------------------
-// 📦 STOCKAGE EN MÉMOIRE (temporaire)
-// --------------------------------------------------
-const rooms = {}; // ex: { "ABCD12": { code, users, gameState, ... } }
-const pendingDisconnects = new Map(); // socket.id → timeout
+// In-memory maps
+const rooms = {};
+const pendingDisconnects = new Map(); // socketId -> timeout
 
-// --------------------------------------------------
-// 🧪 ROUTE DE TEST
-// --------------------------------------------------
-app.get('/', (_, res) => res.send('✅ Serveur Kensho opérationnel'));
+function generateRoomCode() {
+  /* ta logique */
+}
+function getInitialGameState(params) {
+  /* ta logique */
+}
+// removeUserFromRooms: remplace par version robuste ci-dessous
 
-// --------------------------------------------------
-// ⚡ SOCKET.IO HANDLERS
-// --------------------------------------------------
-io.on('connection', (socket) => {
-  // 🔐 Récupération du token utilisateur dès la connexion
-  const userToken = socket.handshake.auth?.userToken || null;
-  console.log(`🛰️ Nouveau client connecté : ${userToken || socket.id}`);
-
-  // 🔎 Si l’utilisateur avait déjà une room → reconnexion automatique
-  if (userToken) {
-    for (const [code, room] of Object.entries(rooms)) {
-      const existingUser = room.users.find((u) => u.userToken === userToken);
-      if (existingUser) {
-        existingUser.socketId = socket.id;
-        socket.join(room.code);
-        console.log(`♻️ Reconnexion de ${existingUser.username} (${userToken}) dans la room ${room.code}`);
-        socket.emit('roomJoined', room);
+function removeUserFromRoomsBySocket(socketId) {
+  for (const code of Object.keys(rooms)) {
+    const room = rooms[code];
+    const before = room.users.length;
+    room.users = room.users.filter((u) => u.socketId !== socketId);
+    if (room.users.length < before) {
+      io.to(code).emit('usersUpdate', room.users);
+      console.log(`🧹 ${socketId} retiré de ${code}`);
+      if (room.users.length === 0) {
+        delete rooms[code];
+        console.log(`🗑️ Room ${code} supprimée (vide)`);
       }
     }
   }
+}
 
-  // ----------------------------
-  // 🔹 CREATE ROOM
-  // ----------------------------
-  socket.on('createRoom', (payload) => {
+io.on('connection', (socket) => {
+  // prefer logging userToken if provided by client
+  const userToken = socket.handshake?.auth?.userToken ?? 'no-token';
+  console.log(`✅ Client connecté : socketId=${socket.id} userToken=${userToken}`);
+
+  // CREATE ROOM
+  socket.on('createRoom', (payload, cb) => {
     console.log('🎮 createRoom reçu →', payload);
     const { username, mode, parameters, userToken } = payload;
-
-    // Génère un code de salle unique
     const roomCode = generateRoomCode();
     const newRoom = {
       code: roomCode,
-      mode: mode || 'standard',
+      mode,
       users: [
         {
           id: userToken,
@@ -83,42 +79,29 @@ io.on('connection', (socket) => {
       messages: [],
       gameParameters: parameters,
       gameState: getInitialGameState(parameters),
+      createdAt: Date.now(),
     };
-
     rooms[roomCode] = newRoom;
     socket.join(roomCode);
 
     console.log(`✅ Nouvelle room ${roomCode} créée par ${username}`);
     socket.emit('roomCreated', newRoom);
-
-    // Enregistrement du dernier salon (utile pour reconnexion)
-    socket.emit('roomJoined', newRoom);
+    if (cb) cb({ success: true, roomCode });
   });
 
-  // ----------------------------
-  // 🔹 JOIN ROOM
-  // ----------------------------
-  socket.on('joinRoom', ({ username, roomCode, userToken }) => {
-    console.log(`👥 joinRoom reçu : ${username} veut rejoindre ${roomCode}`);
-
+  // JOIN ROOM
+  socket.on('joinRoom', (data, cb) => {
+    console.log(`👥 joinRoom reçu :`, data);
+    const { username, roomCode, userToken } = data;
     const room = rooms[roomCode];
     if (!room) {
+      if (cb) cb({ success: false, error: 'Room not found' });
       socket.emit('roomNotFound');
       return;
     }
 
-    // Si le joueur existait déjà (reconnexion)
-    const existingUser = room.users.find((u) => u.userToken === userToken);
-    if (existingUser) {
-      existingUser.socketId = socket.id;
-      console.log(`♻️ ${username} reconnecté dans ${roomCode}`);
-      socket.join(roomCode);
-      socket.emit('roomJoined', room);
-      return;
-    }
-
-    // Vérifie pseudo déjà utilisé
     if (room.users.some((u) => u.username === username)) {
+      if (cb) cb({ success: false, error: 'username taken' });
       socket.emit('usernameTaken');
       return;
     }
@@ -132,62 +115,41 @@ io.on('connection', (socket) => {
       isAdmin: false,
       socketId: socket.id,
     };
-
     room.users.push(newUser);
     socket.join(roomCode);
     io.to(roomCode).emit('usersUpdate', room.users);
-
     console.log(`✅ ${username} a rejoint ${roomCode}`);
     socket.emit('roomJoined', room);
+    if (cb) cb({ success: true });
   });
 
-  // ----------------------------
-  // 🔹 RESET GAME
-  // ----------------------------
+  // RESET GAME (exemple)
   socket.on('resetGame', ({ roomCode }) => {
     const room = rooms[roomCode];
     if (!room) return;
-
     room.gameState = getInitialGameState(room.gameParameters);
     io.to(roomCode).emit('gameStateUpdate', room.gameState);
     console.log(`♻️ Partie réinitialisée pour ${roomCode}`);
   });
 
-  // ----------------------------
-  // 🔹 DECONNEXION
-  // ----------------------------
+  // DISCONNECT: tolérer 60s
   socket.on('disconnect', (reason) => {
-    console.log(`❌ Client déconnecté : ${userToken || socket.id} (${reason})`);
-
-    // Si userToken connu, on ne le supprime pas immédiatement
-    if (userToken) {
-      const timeout = setTimeout(() => {
-        removeUserByToken(userToken);
-        pendingDisconnects.delete(userToken);
-      }, 60000); // 1 minute de tolérance avant suppression
-
-      pendingDisconnects.set(userToken, timeout);
-      return;
-    }
-
-    // Sinon, suppression standard
-    const timeout = setTimeout(() => {
-      removeUserFromRooms(socket.id);
+    console.log(`❌ Déconnexion socketId=${socket.id} reason=${reason}`);
+    // schedule a removal in 60s
+    const t = setTimeout(() => {
+      removeUserFromRoomsBySocket(socket.id);
       pendingDisconnects.delete(socket.id);
-    }, 60000);
-
-    pendingDisconnects.set(socket.id, timeout);
+    }, 60000); // 60s
+    pendingDisconnects.set(socket.id, t);
   });
 
-  // ----------------------------
-  // 🔹 RECONNEXION
-  // ----------------------------
+  // Socket.IO will attempt reconnection automatically; if reconnected we clear pending timeout.
   socket.on('reconnect', () => {
-    console.log(`🔄 ${userToken || socket.id} reconnecté`);
-    const timeout = pendingDisconnects.get(userToken || socket.id);
-    if (timeout) {
-      clearTimeout(timeout);
-      pendingDisconnects.delete(userToken || socket.id);
+    console.log(`🔄 Reconnect event for ${socket.id}`);
+    const t = pendingDisconnects.get(socket.id);
+    if (t) {
+      clearTimeout(t);
+      pendingDisconnects.delete(socket.id);
     }
   });
 });
@@ -236,6 +198,25 @@ function removeUserByToken(token) {
         console.log(`🗑️ Room ${code} supprimée (vide)`);
       }
       return; // on quitte dès qu’on a trouvé
+    }
+  }
+}
+function removeUserFromRooms(socketId) {
+  for (const [code, room] of Object.entries(rooms)) {
+    const before = room.users.length;
+
+    // Supprime l'utilisateur lié à ce socket
+    room.users = room.users.filter((u) => u.socketId !== socketId);
+
+    if (room.users.length < before) {
+      io.to(code).emit('usersUpdate', room.users);
+      console.log(`🧹 ${socketId} retiré de ${code}`);
+
+      // Supprime la room si elle devient vide
+      if (room.users.length === 0) {
+        delete rooms[code];
+        console.log(`🗑️ Room ${code} supprimée (vide)`);
+      }
     }
   }
 }

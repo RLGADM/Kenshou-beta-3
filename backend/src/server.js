@@ -11,7 +11,7 @@ import { Server } from 'socket.io';
 // --------------------------------------------------
 const app = express();
 const server = createServer(app);
-
+// Youpi CORS configuration
 const allowedOrigins = [
   'http://localhost:5173',
   'https://kensho-beta.netlify.app',

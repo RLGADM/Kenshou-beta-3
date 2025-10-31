@@ -152,6 +152,14 @@ export function useRoomEvents() {
       localStorage.setItem('roomCode', room.code);
       setInRoom(true);
 
+      useEffect(() => {
+        if (inRoom) {
+          localStorage.setItem('inRoom', 'true');
+        } else {
+          localStorage.setItem('inRoom', 'false');
+        }
+      }, [inRoom]);
+
       // 🧾 Sécurité : synchronise currentUser
       const storedToken = localStorage.getItem('userToken');
       const me = room.users.find((u: any) => u.userToken === storedToken || u.id === storedToken);
@@ -284,6 +292,7 @@ export function useRoomEvents() {
     setInRoom(false);
     setCurrentRoom(initialRoom);
     setMessages([]);
+    localStorage.setItem('inRoom', 'false');
     localStorage.removeItem('lastRoomCode');
     toast('Tu as quitté la salle 👋');
   }, [socket, currentRoom.code]);

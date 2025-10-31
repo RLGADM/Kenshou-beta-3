@@ -36,9 +36,13 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         reconnection: true,
         reconnectionAttempts: 10,
         reconnectionDelay: 2000,
-        timeout: 60000, // tolérance 60s
+        timeout: 60000,
         withCredentials: true,
+        auth: {
+          userToken: localStorage.getItem('userToken'), // ✅ on l’envoie dès la connexion
+        },
       });
+
 
       persistentSocket = newSocket;
       setSocket(newSocket);

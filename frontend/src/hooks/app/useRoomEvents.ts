@@ -14,8 +14,13 @@ import { toast } from 'react-hot-toast';
 
 import { useSocketContext } from '@/components/SocketContext';
 import { useSocket } from '@/hooks/global/useSocket';
-import { useUserToken } from '@/hooks/global/useUserToken';
+import { ensureUserToken } from '@/utils/userToken';
 import type { User, Message, GameRoom, GameState, GameParameters } from '@/types/game';
+import { defaultGameState } from "@/hooks/room/useRoomGameLogic";
+import { getDefaultParameters } from "@/utils/defaultParameters";     
+
+
+
 
 // --------------------------------------------------
 // 💾 Valeurs initiales
@@ -31,56 +36,43 @@ const initialUser: User = {
 };
 
 const initialRoom: GameRoom = {
-  code: '',
+  code: "",
+  mode: "standard",
   users: [],
   messages: [],
   redTeam: [],
   blueTeam: [],
-  gameParameters: {
-    ParametersTimeFirst: 60,
-    ParametersTimeSecond: 45,
-    ParametersTimeThird: 90,
-    ParametersTeamReroll: 3,
-    ParametersTeamMaxForbiddenWords: 6,
-    ParametersTeamMaxPropositions: 3,
-    ParametersPointsMaxScore: 10,
-    ParametersPointsRules: 'no-tie',
-    ParametersWordsListSelection: {
-      veryCommon: true,
-      lessCommon: true,
-      rarelyCommon: false,
-    },
-  },
-  gameState: {
-    isPlaying: false,
-    currentRound: {
-      index: 0,
-      phases: [],
-      currentPhase: { index: 0, name: 'En attente', status: 'En attente' },
-      redTeamWord: '',
-      blueTeamWord: '',
-      redTeamForbiddenWords: [],
-      blueTeamForbiddenWords: [],
-    },
-    scores: { red: 0, blue: 0 },
-    remainingGuesses: 0,
-  },
+  gameParameters: { ...getDefaultParameters() }, // ✅ fonction appelée
+  gameState: { ...defaultGameState },
   roundsPlayed: 0,
-  winner: undefined,
+  createdAt: Date.now(),
 };
+
 
 // --------------------------------------------------
 // 🧩 Hook principal
 // --------------------------------------------------
 export function useRoomEvents() {
-  // 🔌 Connexion socket & token utilisateur
-  const userToken = useUserToken();
-  const { socket: ctxSocket } = useSocketContext();
-  const { socket: localSocket, isConnected: localIsConnected } = useSocket();
-  const socket = ctxSocket ?? localSocket;
-  const socketIsConnected = Boolean(socket?.connected) || localIsConnected;
-
   const navigate = useNavigate();
+
+  // 🧩 Récupération sécurisée du contexte socket
+  let ctxSocket: Socket | null = null;
+  let localIsConnected = false;
+
+  try {
+    const ctx = useSocketContext();
+    ctxSocket = ctx.socket;
+    localIsConnected = ctx.isConnected;
+  } catch (err) {
+    console.warn("⚠️ useSocketContext appelé sans provider → fallback useSocket()");
+  }
+
+  const { socket: localSocket, isConnected: localConnected } = useSocket();
+  const socket = ctxSocket ?? localSocket;
+  const socketIsConnected = Boolean(socket?.connected) || localIsConnected || localConnected;
+
+  // 🔑 Token utilisateur
+  const userToken = ensureUserToken();
 
   // 🧠 États React
   const [currentUser, setCurrentUser] = useState<User>(initialUser);
@@ -265,7 +257,7 @@ export function useRoomEvents() {
         id: `client-${Date.now()}-${++msgSeqRef.current}`,
         username: currentUser.username,
         message: content,
-        timestamp: new Date(),
+        timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, message]);
       socket.emit('sendMessage', message);

@@ -1,191 +1,240 @@
-// src/hooks/home/useHomeHandlers.ts
-import { useState, useCallback, useEffect } from 'react';
-import { GameParameters } from '@/types';
-import { useSocketContext } from '@/components/SocketContext';
-import { useRoomEvents } from '@/hooks/app/useRoomEvents';
-import { getDefaultParameters } from '@/utils/defaultParameters';
+// --------------------------------------------------
+// 🏠 useHomeHandlers.ts — Hook principal de la page Home Kenshou
+// --------------------------------------------------
+// Rôles :
+// 1️⃣ Gérer les actions de création / rejoindre de salle
+// 2️⃣ Synchroniser les états locaux (username, roomCode, etc.)
+// 3️⃣ Gérer la reconnexion automatique via localStorage
+// --------------------------------------------------
 
-export function useHomeHandlers(initialUsername = '') {
-  // --------------------------------------------------
-  // 🔹 Hooks principaux
-  // --------------------------------------------------
-  const { socket } = useSocketContext();
-  const { currentRoom, handleCreateRoom, handleJoinRoom } = useRoomEvents();
+import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "react-hot-toast";
+import { useSocketContext } from "@/components/SocketContext";
+import { ensureUserToken } from "@/utils/userToken";
 
-  // --------------------------------------------------
-  // 🔹 États locaux et persistance inRoom
-  // --------------------------------------------------
-  const [inRoom, setInRoom] = useState(localStorage.getItem('inRoom') === 'true');
-  useEffect(() => {
-    localStorage.setItem('inRoom', inRoom ? 'true' : 'false');
-  }, [inRoom]);
+// --------------------------------------------------
+// 🔹 Typage du hook
+// --------------------------------------------------
+interface UseHomeHandlersReturn {
+  socketIsConnected: boolean;
+  username: string;
+  setUsername: (v: string) => void;
+  inRoom: boolean;
+  roomCode: string;
+  inputRoomCode: string;
+  setInputRoomCode: (v: string) => void;
+  isCreating: boolean;
+  isJoining: boolean;
+  isConfigModalOpen: boolean;
+  setConfigModalOpen: (v: boolean) => void;
+  handleJoin: () => void;
+  handleConfigConfirm: (parameters: any) => void;
+  startRoom: () => void;
+  error: string | null;
+}
 
+// --------------------------------------------------
+// 🧠 Hook principal
+// --------------------------------------------------
+export function useHomeHandlers(initialUsername = ""): UseHomeHandlersReturn {
+  const navigate = useNavigate();
+  const { socket, isConnected: socketIsConnected } = useSocketContext();
+
+  // États locaux
   const [username, setUsername] = useState(initialUsername);
-  const [inputRoomCode, setInputRoomCode] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [inRoom, setInRoom] = useState(false);
+  const [roomCode, setRoomCode] = useState("");
+  const [inputRoomCode, setInputRoomCode] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [isConfigModalOpen, setConfigModalOpen] = useState(false);
-  const [gameMode, setGameMode] = useState<'standard' | 'custom'>('standard');
-  const [parameters, setParameters] = useState<GameParameters>(getDefaultParameters());
-
-  const socketIsConnected = !!socket?.connected;
-  const roomCode = currentRoom?.code || null;
+  const [error, setError] = useState<string | null>(null);
 
   // --------------------------------------------------
-  // 🚀 startRoom — création directe sans modal
+  // 🪪 Gestion du userToken
   // --------------------------------------------------
-  const startRoom = useCallback(() => {
-    if (!socketIsConnected || !socket) {
-      setError('Connexion au serveur requise.');
-      return;
-    }
-    if (!username.trim()) {
-      setError('Pseudo requis.');
-      return;
-    }
+  const userToken = ensureUserToken();
 
-    try {
+  // --------------------------------------------------
+  // 🎮 CREATE ROOM
+  // --------------------------------------------------
+  const handleCreateRoom = useCallback(
+    (username: string, parameters: any) => {
+      if (!socket) return;
+      if (!username.trim()) {
+        toast.error("Veuillez entrer un pseudo avant de créer une salle.");
+        return;
+      }
+
+      localStorage.setItem("lastUsername", JSON.stringify(username));
+      localStorage.setItem("hasLeftRoom", "false");
+
+      console.log("🎮 handleCreateRoom →", username, parameters);
+
       setIsCreating(true);
-      handleCreateRoom(socket, username.trim(), gameMode, parameters);
-      localStorage.setItem('lastUsername', JSON.stringify(username));
-      setInRoom(true); // ✅ on entre dans une room
-    } catch (err) {
-      console.error('Erreur lors de la création du salon:', err);
-      setError('Erreur lors de la création du salon.');
-    } finally {
-      setIsCreating(false);
-    }
-  }, [socket, socketIsConnected, username, gameMode, parameters, handleCreateRoom]);
 
-  // --------------------------------------------------
-  // ⚙️ Création via formulaire standard
-  // --------------------------------------------------
-  const handleCreate = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
-      startRoom(); // ✅ utilise maintenant startRoom()
+      socket.emit(
+        "createRoom",
+        { username, parameters, userToken },
+        (res: any) => {
+          setIsCreating(false);
+
+          if (!res?.success) {
+            setError("Erreur lors de la création de la salle");
+            toast.error("Impossible de créer la salle");
+          } else {
+            setRoomCode(res.roomCode);
+            setInRoom(true);
+            localStorage.setItem("lastRoomCode", res.roomCode);
+          }
+        }
+      );
     },
-    [startRoom]
+    [socket, userToken]
   );
 
   // --------------------------------------------------
-  // ⚙️ Rejoindre un salon
+  // 👥 JOIN ROOM
   // --------------------------------------------------
-  const handleJoin = useCallback(
-    async (eOrUsername: React.FormEvent | string, maybeRoomCode?: string) => {
-      if (!socketIsConnected || !socket) return setError('Connexion au serveur requise.');
-
-      let finalUsername = username.trim();
-      let finalRoomCode = inputRoomCode.trim().toUpperCase();
-
-      // Si l'appel vient en direct (handleJoin("pseudo", "ABC123"))
-      if (typeof eOrUsername === 'string' && typeof maybeRoomCode === 'string') {
-        finalUsername = eOrUsername.trim();
-        finalRoomCode = maybeRoomCode.trim().toUpperCase();
-      } else {
-        (eOrUsername as React.FormEvent).preventDefault();
+  const handleJoinRoom = useCallback(
+    (username: string, roomCode: string) => {
+      if (!socket) return;
+      if (!username.trim()) {
+        toast.error("Veuillez entrer un pseudo avant de rejoindre une salle.");
+        return;
+      }
+      if (!roomCode.trim()) {
+        toast.error("Veuillez entrer un code de salle.");
+        return;
       }
 
-      if (!finalUsername || !finalRoomCode) {
-        return setError('Pseudo et code salon requis.');
-      }
+      localStorage.setItem("lastUsername", JSON.stringify(username));
+      localStorage.setItem("hasLeftRoom", "false");
 
-      try {
-        setIsJoining(true);
-        await handleJoinRoom(socket, finalUsername, finalRoomCode);
-        localStorage.setItem('lastUsername', JSON.stringify(finalUsername));
-        setInRoom(true); // ✅ on rejoint une room
-      } catch (err) {
-        console.error('Erreur lors de la connexion à la salle:', err);
-        setError('Impossible de rejoindre le salon.');
-      } finally {
+      console.log("👥 handleJoinRoom →", username, roomCode);
+
+      setIsJoining(true);
+      socket.emit("joinRoom", { username, roomCode, userToken }, (res: any) => {
         setIsJoining(false);
-      }
+        if (!res?.success) {
+          const msg =
+            res?.error === "username taken"
+              ? "Ce pseudo est déjà pris dans cette salle."
+              : "Erreur lors de la connexion à la salle.";
+          setError(msg);
+          toast.error(msg);
+        } else {
+          setRoomCode(roomCode);
+          setInRoom(true);
+          localStorage.setItem("lastRoomCode", roomCode);
+          navigate(`/room/${roomCode}`);
+        }
+      });
     },
-    [socket, socketIsConnected, username, inputRoomCode, handleJoinRoom]
+    [socket, userToken, navigate]
   );
 
   // --------------------------------------------------
-  // ⚙️ Confirmation du modal de configuration
+  // ⚙️ Handlers liés à l'UI
   // --------------------------------------------------
+  const handleJoin = useCallback(() => {
+    handleJoinRoom(username, inputRoomCode);
+  }, [handleJoinRoom, username, inputRoomCode]);
+
   const handleConfigConfirm = useCallback(
-    (providedUsername: string, selectedMode: 'standard' | 'custom', selectedParameters: GameParameters) => {
-      setConfigModalOpen(false);
-      setGameMode(selectedMode);
-      setParameters(selectedParameters);
-
-      if (!providedUsername.trim()) {
-        setError('Veuillez entrer un pseudo.');
-        return;
-      }
-
-      if (!socket) {
-        setError('Connexion au serveur requise.');
-        return;
-      }
-
-      console.log('avant create room');
-      handleCreateRoom(socket, providedUsername.trim(), selectedMode, selectedParameters);
-      console.log('apres create room');
-      localStorage.setItem('lastUsername', JSON.stringify(providedUsername));
-      setInRoom(true);
-    },
-    [socket, handleCreateRoom]
+    (parameters: any) => handleCreateRoom(username, parameters),
+    [handleCreateRoom, username]
   );
 
-  // --------------------------------------------------
-  // ⚙️ Reconnexion automatique si inRoom = true
-  // --------------------------------------------------
+  const startRoom = useCallback(() => setConfigModalOpen(true), []);
+//tentative
   useEffect(() => {
-    if (socket?.connected && inRoom) {
-      const username = JSON.parse(localStorage.getItem('lastUsername') || '""');
-      const userToken = localStorage.getItem('userToken');
-      const lastRoomCode = localStorage.getItem('lastRoomCode');
-      if (username && userToken && lastRoomCode) {
-        console.log(`♻️ Tentative de reconnexion à ${lastRoomCode}`);
-        handleJoinRoom(socket, username, lastRoomCode);
-      }
-    }
-  }, [socket, inRoom, handleJoinRoom]);
+    if (!socket) return;
+
+    socket.once("roomCreated", (room) => {
+      console.log("✅ roomCreated reçu du serveur →", room.code);
+      localStorage.setItem("lastRoomCode", room.code);
+      localStorage.setItem("hasLeftRoom", "false");
+      setRoomCode(room.code);
+      setInRoom(true);
+      navigate(`/room/${room.code}`);
+    });
+
+    return () => {
+      socket.off("roomCreated");
+    };
+  }, [socket]);
+// --------------------------------------------------
+// ♻️ Reconnexion automatique si utilisateur actif
+// --------------------------------------------------
+useEffect(() => {
+  if (!socketIsConnected) return;
+
+  // ✅ Flag pour éviter les doublons de reconnexion
+  let hasReconnected = false;
+
+  const hasLeftRoom = localStorage.getItem("hasLeftRoom") === "true";
+  const lastRoomCode = localStorage.getItem("lastRoomCode");
+  const savedUsername = JSON.parse(localStorage.getItem("lastUsername") || '""');
+
+  if (inRoom || isCreating || hasLeftRoom) {
+    console.log("🚫 Reconnexion automatique ignorée (inRoom/isCreating/hasLeftRoom)");
+    return;
+  }
+
+  if (lastRoomCode && savedUsername && !hasReconnected) {
+    hasReconnected = true;
+    console.log(`♻️ Tentative de reconnexion automatique à ${lastRoomCode}`);
+    handleJoinRoom(savedUsername, lastRoomCode);
+  }
+
+  return () => {
+    hasReconnected = true; // empêche le re-trigger lors d’un re-render
+  };
+}, [socketIsConnected]);
+// --------------------------------------------------
+// ✅ Écoute directe de l’event roomCreated
+// --------------------------------------------------
+useEffect(() => {
+  if (!socket) return;
+
+  const onRoomCreated = (room: any) => {
+    console.log("✅ roomCreated reçu du serveur →", room.code);
+
+    localStorage.setItem("lastRoomCode", room.code);
+    localStorage.setItem("hasLeftRoom", "false");
+
+    setRoomCode(room.code);
+    setInRoom(true);
+    navigate(`/room/${room.code}`);
+  };
+
+  socket.on("roomCreated", onRoomCreated);
+
+  return () => {
+    socket.off("roomCreated", onRoomCreated);
+  };
+}, [socket, navigate]);
 
   // --------------------------------------------------
-  // 📦 Exports publics
+  // 🔙 Retour
   // --------------------------------------------------
   return {
-    // Socket
-    socket,
     socketIsConnected,
-
-    // Utilisateur et room
-    inRoom,
-    setInRoom,
-    roomCode,
     username,
     setUsername,
-
-    // Création et jointure
-    startRoom,
-    handleCreate,
-    handleJoin,
-    handleConfigConfirm,
-
-    // Inputs
+    inRoom,
+    roomCode,
     inputRoomCode,
     setInputRoomCode,
-
-    // États UI
     isCreating,
     isJoining,
     isConfigModalOpen,
     setConfigModalOpen,
-
-    // Paramètres de jeu
-    gameMode,
-    parameters,
-
-    // Erreurs
+    handleJoin,
+    handleConfigConfirm,
+    startRoom,
     error,
-    setError,
   };
 }

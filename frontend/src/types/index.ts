@@ -57,21 +57,31 @@ const defaultGameParameters: GameParameters = {
 };
 
 // 🧠 état de jeu par défaut — conforme à TON GameState
-const defaultGameState: GameState = {
-  // "Mise à zéro…" comme dans ton commentaire
+const defaultGameState = {
   isPlaying: false,
-  currentRound: initialRound,
+  winner: null,
+  currentRound: {
+    index: 0,
+    phases: [] as any[], // 👈 tableau modifiable
+    currentPhase: { index: 0 as const, name: "En attente", status: "En attente" },
+    redTeamWord: "",
+    blueTeamWord: "",
+    redTeamForbiddenWords: [] as string[],
+    blueTeamForbiddenWords: [] as string[],
+  },
   scores: { red: 0, blue: 0 },
-  // on part sur le max de propositions comme nb de tentatives
-  remainingGuesses: defaultGameParameters.ParametersTeamMaxPropositions,
-  // winner: undefined
-};
+  remainingGuesses: 3,
+} as const;
+
 
 // 🏠 room vide conforme à TON interface Room
 export const emptyRoom: Room = {
-  code: '',
+  code: "",
+  mode: "standard", // ✅ reconnu maintenant
   users: [],
-  messages: [] as Message[],
+  messages: [],
   gameParameters: defaultGameParameters,
   gameState: defaultGameState,
+  createdAt: 0,
 };
+

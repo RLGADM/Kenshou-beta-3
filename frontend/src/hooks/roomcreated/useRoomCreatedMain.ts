@@ -12,13 +12,16 @@ import { useGameState } from '@/hooks/game/useGameState';
 import { getDefaultParameters } from '@/utils/defaultParameters';
 import type { GameParameters, User } from '@/types';
 
+// 🚫 ❌ supprime cette ligne !
+// const { inRoom, setInRoom, currentRoom } = useRoomEvents();
+
 // --------------------------------------------------
 // 🔹 Hook principal
 // --------------------------------------------------
 export function useRoomCreatedMain() {
   const navigate = useNavigate();
   const { socket } = useSocketContext();
-  const { inRoom, currentRoom } = useRoomEvents();
+  const { inRoom, setInRoom, currentRoom } = useRoomEvents(); // ✅ ici c’est bon (dans un hook)
 
   // --- États internes ---
   const [proposal, setProposal] = useState('');
@@ -37,19 +40,37 @@ export function useRoomCreatedMain() {
   } = useGameState({ parameters: gameParameters });
 
   // --------------------------------------------------
-  // 🧭 Redirection si le joueur quitte la salle
+  // 🚪 Quitter la salle proprement
   // --------------------------------------------------
-  useEffect(() => {
-    if (!inRoom || !currentRoom?.code) {
-      toast('🚪 Déconnexion de la salle...');
-      navigate('/');
+  const handleLeaveRoom = useCallback(() => {
+    if (!socket || !currentRoom) return;
+
+    const roomCode = currentRoom.code;
+    const userToken = localStorage.getItem("userToken");
+
+    if (!roomCode || !userToken) {
+      console.warn("⚠️ Impossible de quitter : roomCode ou userToken manquant");
+      navigate("/");
+      return;
     }
-  }, [inRoom, currentRoom, navigate]);
+
+    console.log(`🚪 Demande de sortie → ${roomCode} (${userToken})`);
+
+    socket.emit("leaveRoom", { roomCode, userToken });
+
+    localStorage.setItem("hasLeftRoom", "true");
+    localStorage.removeItem("lastRoomCode");
+    localStorage.removeItem("roomCode");
+
+    setInRoom(false);
+    navigate("/");
+
+    toast.success("Vous avez quitté la salle !");
+  }, [socket, currentRoom, navigate, setInRoom]);
 
   // --------------------------------------------------
   // 🕹️ Contrôles du jeu
   // --------------------------------------------------
-
   const startGame = useCallback(() => {
     if (!socket || !currentRoom) return;
 
@@ -91,24 +112,11 @@ export function useRoomCreatedMain() {
   );
 
   // --------------------------------------------------
-  // 🚪 Quitter la salle
-  // --------------------------------------------------
-  const handleLeaveRoom = useCallback(() => {
-    if (!socket || !currentRoom) return;
-    socket.emit('leaveRoom', { roomCode: currentRoom.code });
-    navigate('/');
-  }, [socket, currentRoom, navigate]);
-
-  // --------------------------------------------------
   // ⏱️ Format du timer (mm:ss)
   // --------------------------------------------------
   const formatTimer = useCallback((seconds: number): string => {
-    const min = Math.floor(seconds / 60)
-      .toString()
-      .padStart(2, '0');
-    const sec = Math.floor(seconds % 60)
-      .toString()
-      .padStart(2, '0');
+    const min = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const sec = Math.floor(seconds % 60).toString().padStart(2, '0');
     return `${min}:${sec}`;
   }, []);
 

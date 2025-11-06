@@ -1,212 +1,87 @@
-// server.js (ou src/server.js) - extrait pertinent
-import express from 'express';
-import cors from 'cors';
-import { createServer } from 'http';
-import { Server } from 'socket.io';
+// --------------------------------------------------
+// 🚀 Kenshou Server — backend/src/server.js
+// --------------------------------------------------
+// Gère la logique temps réel : création de room, join, déconnexion, game state
+// --------------------------------------------------
 
+import express from "express";
+import cors from "cors";
+import { createServer } from "http";
+import { Server } from "socket.io";
+import crypto from "crypto";
+import {
+  createUser,
+  createRoom,
+  createGameRoom,
+  defaultGameState,
+  defaultGameParameters,
+} from "./types.js";
+
+// --------------------------------------------------
+// ⚙️ Configuration serveur HTTP + Socket.IO
+// --------------------------------------------------
 const app = express();
 const server = createServer(app);
 
 const allowedOrigins = [
-  'http://localhost:5173',
-  'https://kensho-beta.netlify.app',
-  'https://kenshou-beta-3.onrender.com',
+  "http://localhost:5173",
+  "https://kensho-beta.netlify.app",
+  "https://kenshou-beta-3.onrender.com",
 ];
 
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 
-// options: augmenter pingInterval / pingTimeout
 const io = new Server(server, {
-  cors: { origin: allowedOrigins, methods: ['GET', 'POST'], credentials: true },
-  pingInterval: 20000, // serveur ping client every 20s
-  pingTimeout: 60000, // wait 60s for pong before disconnect
+  cors: { origin: allowedOrigins, methods: ["GET", "POST"], credentials: true },
+  pingInterval: 20000,
+  pingTimeout: 60000,
   allowEIO3: false,
 });
 
-// In-memory maps
-const rooms = {};
-const pendingDisconnects = new Map(); // socketId -> timeout
+// --------------------------------------------------
+// 🧠 État global en mémoire
+// --------------------------------------------------
+const rooms = {}; // { [code]: Room }
+const usersByToken = new Map(); // userToken → socketId
+const pendingDisconnects = new Map(); // socketId → timeout
 
-// removeUserFromRooms: remplace par version robuste ci-dessous
+// --------------------------------------------------
+// 🧹 Nettoyage au démarrage du serveur
+// --------------------------------------------------
+function resetServerState() {
+  // ⚙️ Vide les rooms et utilisateurs connus
+  Object.keys(rooms).forEach((code) => delete rooms[code]);
+  usersByToken.clear();
+  pendingDisconnects.clear();
 
-function removeUserFromRoomsBySocket(socketId) {
-  for (const code of Object.keys(rooms)) {
-    const room = rooms[code];
-    const before = room.users.length;
-    room.users = room.users.filter((u) => u.socketId !== socketId);
-    if (room.users.length < before) {
-      io.to(code).emit('usersUpdate', room.users);
-      console.log(`🧹 ${socketId} retiré de ${code}`);
-      if (room.users.length === 0) {
-        delete rooms[code];
-        console.log(`🗑️ Room ${code} supprimée (vide)`);
-      }
-    }
-  }
+  console.log("♻️ Réinitialisation complète du serveur (rooms & users vidés)");
 }
 
-io.on('connection', (socket) => {
-  // prefer logging userToken if provided by client
-  const userToken = socket.handshake?.auth?.userToken ?? 'no-token';
-  console.log(`✅ Client connecté : socketId=${socket.id} userToken=${userToken}`);
-
-  // CREATE ROOM
-  socket.on('createRoom', (payload, cb) => {
-    console.log('🎮 createRoom reçu →', payload);
-    const { username, mode, parameters, userToken } = payload;
-    const roomCode = generateRoomCode();
-    const newRoom = {
-      code: roomCode,
-      mode,
-      users: [
-        {
-          id: userToken,
-          userToken,
-          username,
-          team: 'spectator',
-          role: 'sage',
-          isAdmin: true,
-          socketId: socket.id,
-        },
-      ],
-      messages: [],
-      gameParameters: parameters,
-      gameState: getInitialGameState(parameters),
-      createdAt: Date.now(),
-    };
-    rooms[roomCode] = newRoom;
-    socket.join(roomCode);
-
-    console.log(`✅ Nouvelle room ${roomCode} créée par ${username}`);
-    socket.emit('roomCreated', newRoom);
-    if (cb) cb({ success: true, roomCode });
-  });
-
-  // JOIN ROOM
-  socket.on('joinRoom', (data, cb) => {
-    console.log(`👥 joinRoom reçu :`, data);
-    const { username, roomCode, userToken } = data;
-    const room = rooms[roomCode];
-    if (!room) {
-      if (cb) cb({ success: false, error: 'Room not found' });
-      socket.emit('roomNotFound');
-      return;
-    }
-
-    if (room.users.some((u) => u.username === username)) {
-      if (cb) cb({ success: false, error: 'username taken' });
-      socket.emit('usernameTaken');
-      return;
-    }
-
-    const newUser = {
-      id: userToken,
-      userToken,
-      username,
-      team: 'spectator',
-      role: 'disciple',
-      isAdmin: false,
-      socketId: socket.id,
-    };
-    room.users.push(newUser);
-    socket.join(roomCode);
-    io.to(roomCode).emit('usersUpdate', room.users);
-    console.log(`✅ ${username} a rejoint ${roomCode}`);
-    socket.emit('roomJoined', room);
-    if (cb) cb({ success: true });
-  });
-
-  // RESET GAME (exemple)
-  socket.on('resetGame', ({ roomCode }) => {
-    const room = rooms[roomCode];
-    if (!room) return;
-    room.gameState = getInitialGameState(room.gameParameters);
-    io.to(roomCode).emit('gameStateUpdate', room.gameState);
-    console.log(`♻️ Partie réinitialisée pour ${roomCode}`);
-  });
-
-  // DISCONNECT: tolérer 60s
-  socket.on('disconnect', (reason) => {
-    console.log(`❌ Déconnexion socketId=${socket.id} reason=${reason}`);
-    // schedule a removal in 60s
-    const t = setTimeout(() => {
-      removeUserFromRoomsBySocket(socket.id);
-      pendingDisconnects.delete(socket.id);
-    }, 60000); // 60s
-    pendingDisconnects.set(socket.id, t);
-  });
-
-  // Socket.IO will attempt reconnection automatically; if reconnected we clear pending timeout.
-  socket.on('reconnect', () => {
-    console.log(`🔄 Reconnect event for ${socket.id}`);
-    const t = pendingDisconnects.get(socket.id);
-    if (t) {
-      clearTimeout(t);
-      pendingDisconnects.delete(socket.id);
-    }
-  });
-});
+// Appel immédiat au lancement
+resetServerState();
 
 // --------------------------------------------------
-// 🧩 FONCTIONS UTILITAIRES
+// 🧩 Fonctions utilitaires
 // --------------------------------------------------
 function generateRoomCode() {
-  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let code;
   do {
-    code = Array.from({ length: 6 }, () => letters[Math.floor(Math.random() * letters.length)]).join('');
+    code = Array.from({ length: 6 }, () =>
+      chars[Math.floor(Math.random() * chars.length)]
+    ).join("");
   } while (rooms[code]);
   return code;
 }
 
-function getInitialGameState(params) {
-  return {
-    isPlaying: false,
-    currentRound: {
-      index: 0,
-      phases: [],
-      currentPhase: { index: 0, name: 'En attente', status: 'En attente' },
-      redTeamWord: '',
-      blueTeamWord: '',
-      redTeamForbiddenWords: [],
-      blueTeamForbiddenWords: [],
-    },
-    scores: { red: 0, blue: 0 },
-    remainingGuesses: 3,
-  };
-}
-
-// 🔹 Supprime un utilisateur par son userToken (persiste entre reconnexions)
-function removeUserByToken(token) {
+function removeUserFromRoomsBySocket(socketId) {
   for (const [code, room] of Object.entries(rooms)) {
     const before = room.users.length;
-    room.users = room.users.filter((u) => u.userToken !== token);
-
-    if (room.users.length < before) {
-      io.to(code).emit('usersUpdate', room.users);
-      console.log(`🧹 ${token} retiré de ${code}`);
-
-      if (room.users.length === 0) {
-        delete rooms[code];
-        console.log(`🗑️ Room ${code} supprimée (vide)`);
-      }
-      return; // on quitte dès qu’on a trouvé
-    }
-  }
-}
-function removeUserFromRooms(socketId) {
-  for (const [code, room] of Object.entries(rooms)) {
-    const before = room.users.length;
-
-    // Supprime l'utilisateur lié à ce socket
     room.users = room.users.filter((u) => u.socketId !== socketId);
-
     if (room.users.length < before) {
-      io.to(code).emit('usersUpdate', room.users);
+      io.to(code).emit("usersUpdate", room.users);
       console.log(`🧹 ${socketId} retiré de ${code}`);
-
-      // Supprime la room si elle devient vide
       if (room.users.length === 0) {
         delete rooms[code];
         console.log(`🗑️ Room ${code} supprimée (vide)`);
@@ -214,9 +89,219 @@ function removeUserFromRooms(socketId) {
     }
   }
 }
+
+function removeUserByToken(userToken) {
+  for (const [code, room] of Object.entries(rooms)) {
+    const before = room.users.length;
+    room.users = room.users.filter((u) => u.userToken !== userToken);
+    if (room.users.length < before) {
+      io.to(code).emit("usersUpdate", room.users);
+      console.log(`🧹 ${userToken} retiré de ${code}`);
+      if (room.users.length === 0) {
+        delete rooms[code];
+        console.log(`🗑️ Room ${code} supprimée (vide)`);
+      }
+    }
+  }
+}
+
+// --------------------------------------------------
+// 🛰️ Protection anti-clients fantômes
+// --------------------------------------------------
+io.use((socket, next) => {
+  const token = socket.handshake.query?.token;
+  if (!token || typeof token !== "string") {
+    console.log("⚠️ Connexion bloquée : token manquant ou invalide");
+    return next(new Error("No valid token"));
+  }
+
+  // Si le token est déjà enregistré mais que l'ancien socket n'est pas fermé :
+  if (usersByToken.has(token)) {
+    console.log(`⚠️ Client fantôme détecté : ${token}, suppression ancienne socket`);
+    const oldSocketId = usersByToken.get(token);
+    const oldSocket = io.sockets.sockets.get(oldSocketId);
+    if (oldSocket) oldSocket.disconnect(true);
+    usersByToken.delete(token);
+  }
+
+  usersByToken.set(token, socket.id);
+  next();
+});
+
+// --------------------------------------------------
+// ⚡ Socket.IO — Logique principale
+// --------------------------------------------------
+io.on("connection", (socket) => {
+  const userToken = socket.handshake?.auth?.userToken || crypto.randomUUID();
+  usersByToken.set(userToken, socket.id);
+
+  console.log(`✅ Client connecté : socketId=${socket.id} userToken=${userToken}`);
+
+  // --------------------------------------------------
+  // 🎮 CREATE ROOM
+  // --------------------------------------------------
+  socket.on("createRoom", (payload, cb) => {
+    try {
+      const { username, parameters, userToken: clientToken } = payload;
+
+      const token = clientToken || userToken;
+      const roomCode = generateRoomCode();
+
+      // Supprime ancienne session du même token
+      removeUserByToken(token);
+
+      const user = createUser({
+        id: token,
+        userToken: token,
+        username,
+        isAdmin: true,
+        role: "spectator",
+        socketId: socket.id,
+        team: "spectator",
+      });
+
+      const newRoom = createRoom({
+        code: roomCode,
+        users: [user],
+        messages: [],
+        gameParameters: parameters || defaultGameParameters,
+        gameState: defaultGameState,
+        createdAt: Date.now(),
+      });
+
+      rooms[roomCode] = newRoom;
+      socket.join(roomCode);
+
+      console.log(`✅ Nouvelle room ${roomCode} créée par ${username}`);
+      socket.emit("roomCreated", newRoom);
+      if (cb) cb({ success: true, roomCode });
+    } catch (err) {
+      console.error("❌ Erreur lors de la création de la room :", err);
+      if (cb) cb({ success: false, error: err.message });
+    }
+  });
+
+// --------------------------------------------------
+// 👥 JOIN ROOM
+// --------------------------------------------------
+socket.on("joinRoom", (data, cb) => {
+  const { username, roomCode, userToken } = data;
+  console.log(`👥 joinRoom reçu :`, data);
+
+  const room = rooms[roomCode];
+  if (!room) {
+    if (cb) cb({ success: false, error: "Room not found" });
+    socket.emit("roomNotFound");
+    return;
+  }
+
+  // Vérifie si le pseudo existe déjà
+  const existingUser = room.users.find((u) => u.username === username);
+
+  if (existingUser) {
+    // ✅ Même token → autoriser la reconnexion (ex: F5 ou reconnexion auto)
+    if (existingUser.userToken === userToken) {
+      console.log(`🔄 ${username} se reconnecte à ${roomCode}`);
+      existingUser.socketId = socket.id; // mise à jour du socketId
+      socket.join(roomCode);
+      io.to(roomCode).emit("usersUpdate", room.users);
+      socket.emit("roomJoined", room);
+      if (cb) cb({ success: true, reconnected: true });
+      return;
+    }
+
+    // ❌ Sinon → pseudo déjà pris
+    console.log(`🚫 ${username} déjà utilisé dans ${roomCode}`);
+    if (cb) cb({ success: false, error: "username taken" });
+    socket.emit("usernameTaken");
+    return;
+  }
+
+  // ✅ Cas normal — ajout d’un nouveau joueur
+  const newUser = {
+    id: userToken,
+    userToken,
+    username,
+    team: "spectator",
+    role: "spectator",
+    isAdmin: true,
+    socketId: socket.id,
+  };
+
+  room.users.push(newUser);
+  socket.join(roomCode);
+  io.to(roomCode).emit("usersUpdate", room.users);
+
+  console.log(`✅ ${username} a rejoint ${roomCode}`);
+  socket.emit("roomJoined", room);
+  if (cb) cb({ success: true });
+});
+
+
+  // --------------------------------------------------
+  // 🕹️ RESET GAME
+  // --------------------------------------------------
+  socket.on("resetGame", ({ roomCode }) => {
+    const room = rooms[roomCode];
+    if (!room) return;
+    room.gameState = { ...defaultGameState };
+    io.to(roomCode).emit("gameStateUpdate", room.gameState);
+    console.log(`♻️ Partie réinitialisée pour ${roomCode}`);
+  });
+
+  // --------------------------------------------------
+  // 🚪 LEAVE ROOM
+  // --------------------------------------------------
+  socket.on("leaveRoom", ({ roomCode, userToken }) => {
+    const room = rooms[roomCode];
+    if (!room) return;
+
+    room.users = room.users.filter((u) => u.userToken !== userToken);
+    io.to(roomCode).emit("usersUpdate", room.users);
+    socket.leave(roomCode);
+    console.log(`🚪 ${userToken} a quitté la room ${roomCode}`);
+
+    if (room.users.length === 0) {
+      delete rooms[roomCode];
+      console.log(`🗑️ Room ${roomCode} supprimée (vide)`);
+    }
+  });
+
+  // --------------------------------------------------
+  // ❌ DISCONNECT (tolérance 60s)
+  // --------------------------------------------------
+  socket.on("disconnect", (reason) => {
+    console.log(`❌ Déconnexion socketId=${socket.id} reason=${reason}`);
+
+    for (const [token, id] of usersByToken.entries()) {
+      if (id === socket.id) {
+        usersByToken.delete(token);
+      }
+    }
+
+    const timeout = setTimeout(() => {
+      removeUserFromRoomsBySocket(socket.id);
+      pendingDisconnects.delete(socket.id);
+    }, 60000);
+
+    pendingDisconnects.set(socket.id, timeout);
+  });
+
+  // --------------------------------------------------
+  // 🔁 RECONNECT
+  // --------------------------------------------------
+  socket.on("reconnect", () => {
+    const t = pendingDisconnects.get(socket.id);
+    if (t) {
+      clearTimeout(t);
+      pendingDisconnects.delete(socket.id);
+      console.log(`🔄 Reconnexion socketId=${socket.id}`);
+    }
+  });
+});
 
 // --------------------------------------------------
 // 🚀 LANCEMENT SERVEUR
 // --------------------------------------------------
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`✅ Serveur Kensho en ligne sur http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`✅ Serveur Kenshou en ligne sur http://localhost:${PORT}`));

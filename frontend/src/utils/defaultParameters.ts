@@ -1,8 +1,6 @@
 import { GameParameters } from "@/types";
 
 export const getDefaultParameters = (): GameParameters => ({
-  numberOfPlayers: 4,
-  numberOfRounds: 5,
   ParametersTimeFirst: 30,
   ParametersTimeSecond: 20,
   ParametersTimeThird: 15,
@@ -11,5 +9,9 @@ export const getDefaultParameters = (): GameParameters => ({
   ParametersTeamMaxPropositions: 5,
   ParametersPointsMaxScore: 10,
   ParametersPointsRules: "no-tie",
-  ParametersWordsListSelection: "medium",
+  ParametersWordsListSelection: {
+    veryCommon: true,
+    lessCommon: true,
+    rarelyCommon: false,
+  },
 });

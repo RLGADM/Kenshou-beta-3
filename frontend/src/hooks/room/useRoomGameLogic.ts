@@ -1,175 +1,178 @@
 // --------------------------------------------------
-// 🎮 useRoomGameLogic — Gestion complète de la logique du jeu Kensho
+// 🎮 useRoomGameLogic.ts — Logique de jeu multijoueur Kensho
+// --------------------------------------------------
+// Gère : progression du jeu (rounds, scores, phases, winner, reset, timer)
 // --------------------------------------------------
 
-import { useCallback } from 'react';
-import { useGameState } from '../game/useGameState';
-import { useGameTimer } from '../game/useGameTimer';
-import { useGameHistory } from '../game/useGameHistory';
-import type { GameParameters } from '@/types/game';
+import { useState, useCallback, useEffect } from "react";
+import { useSocketContext } from "@/components/SocketContext";
+import { useGameTimer } from "@/hooks/game/useGameTimer";
+import { GameState, GameParameters } from "@/types/game";
 
 // --------------------------------------------------
-// 🔹 Hook principal
+// ⚙️ Constantes globales
 // --------------------------------------------------
-export const useRoomGameLogic = (parameters: GameParameters) => {
-  // --- État principal du jeu ---
-  const {
-    gameState,
-    setGameState,
-    startGame,
-    startPhase,
-    pauseGame,
-    resumeGame,
-    addPoint,
-    nextRound,
-    setWord,
-    addForbiddenWord,
-    removeForbiddenWord,
-    decrementGuesses,
-    resetToWaitingPhase,
-  } = useGameState({ parameters });
+const PHASE_NAMES = ["En attente", "Choix du mot", "Mots interdits", "Oratoire"] as const;
 
-  // --- Timers de phase ---
-  const { timerState, startTimer, pauseTimer, resumeTimer, resetTimer, getCurrentTime } = useGameTimer({
-    phase1Duration: parameters.ParametersTimeFirst,
-    phase2Duration: parameters.ParametersTimeSecond,
-    phase3Duration: parameters.ParametersTimeThird,
+// --------------------------------------------------
+// 🧩 État par défaut du jeu
+// --------------------------------------------------
+export const defaultGameState: GameState = {
+  isPlaying: false,
+  winner: null,
+  currentRound: {
+    index: 0,
+    phases: [],
+    currentPhase: { index: 0 as const, name: "En attente", status: "En attente" },
+    redTeamWord: "",
+    blueTeamWord: "",
+    redTeamForbiddenWords: [] as string[],
+    blueTeamForbiddenWords: [] as string[],
+  },
+  scores: { red: 0, blue: 0 },
+  remainingGuesses: 3,
+};
+
+// --------------------------------------------------
+// 🧠 Hook principal
+// --------------------------------------------------
+export function useRoomGameLogic(roomCode?: string, gameParameters?: GameParameters) {
+  const { socket } = useSocketContext();
+  const [gameState, setGameState] = useState<GameState>(defaultGameState);
+
+  // 🕒 Timer intégré basé sur les paramètres
+  const timer = useGameTimer({
+    phase1Duration: gameParameters?.ParametersTimeFirst ?? 60,
+    phase2Duration: gameParameters?.ParametersTimeSecond ?? 45,
+    phase3Duration: gameParameters?.ParametersTimeThird ?? 30,
   });
 
-  // --- Historique du jeu ---
-  const { history, gameStarted, phaseStarted, roundEnded, guessAttempted } = useGameHistory();
+  // --------------------------------------------------
+  // ▶️ Démarrer une nouvelle partie
+  // --------------------------------------------------
+  const startGame = useCallback(() => {
+    if (!socket || !roomCode) return;
+
+    // Reset du timer et démarrage de la première phase
+    timer.resetTimer();
+    timer.startTimer(1);
+
+    const newState: GameState = {
+      ...defaultGameState,
+      isPlaying: true,
+      winner: null,
+      currentRound: {
+        ...defaultGameState.currentRound,
+        index: 1,
+        currentPhase: {
+          index: 1 as const,
+          name: PHASE_NAMES[1],
+          status: "En cours",
+        },
+      },
+    };
+
+    setGameState(newState);
+    socket.emit("gameStateUpdate", { roomCode, gameState: newState });
+  }, [socket, roomCode, timer]);
 
   // --------------------------------------------------
-  // 🚀 Démarrage du jeu
+  // ⏸️ Mettre en pause le jeu
   // --------------------------------------------------
-  const handleGameStart = useCallback(() => {
-    startGame();
-    resetTimer();
-    startTimer(1);
-    gameStarted();
-  }, [startGame, resetTimer, startTimer, gameStarted]);
+  const pauseGame = useCallback(() => {
+    timer.pauseTimer();
+    setGameState((prev) => ({ ...prev, isPlaying: false }));
+  }, [timer]);
 
   // --------------------------------------------------
-  // ⏩ Avancer à la phase suivante
+  // 🧮 Mettre à jour le score
   // --------------------------------------------------
-  const handlePhaseProceed = useCallback(() => {
-    const currentPhase = gameState.currentRound.currentPhase.index;
-    const nextPhase = currentPhase < 3 ? ((currentPhase + 1) as 1 | 2 | 3) : null;
+  const updateScore = useCallback(
+    (team: "red" | "blue") => {
+      if (!socket || !roomCode) return;
 
-    if (nextPhase) {
-      startPhase(nextPhase);
-      startTimer(nextPhase);
-      phaseStarted(nextPhase);
-    } else {
-      // Fin du round → attribution de points
-      const { redTeamWord, blueTeamWord } = gameState.currentRound;
+      setGameState((prev) => {
+        const newScores = {
+          red: team === "red" ? prev.scores.red + 1 : prev.scores.red,
+          blue: team === "blue" ? prev.scores.blue + 1 : prev.scores.blue,
+        };
 
-      const redFound = !!redTeamWord;
-      const blueFound = !!blueTeamWord;
+        const maxScore = gameParameters?.ParametersPointsMaxScore ?? 5;
 
-      if (parameters.ParametersPointsRules === 'tie' && redFound && blueFound) {
-        // Mode égalité : si les deux trouvent, pas de point
-        roundEnded(gameState.scores, true);
-      } else {
-        if (redFound) addPoint('red');
-        if (blueFound) addPoint('blue');
-        roundEnded(gameState.scores, false);
-      }
+        let winner: "red" | "blue" | "tie" | null = null;
+        if (newScores.red >= maxScore && newScores.blue >= maxScore) winner = "tie";
+        else if (newScores.red >= maxScore) winner = "red";
+        else if (newScores.blue >= maxScore) winner = "blue";
 
-      nextRound();
-    }
-  }, [gameState, parameters, startPhase, startTimer, phaseStarted, roundEnded, addPoint, nextRound]);
+        const nextPhaseIndex = ((prev.currentRound.currentPhase.index + 1) %
+          4) as 0 | 1 | 2 | 3;
 
-  // --------------------------------------------------
-  // 💬 Gestion des propositions de mots (phase 3)
-  // --------------------------------------------------
-  const handleGuess = useCallback(
-    (word: string) => {
-      const { currentRound, remainingGuesses } = gameState;
-      const targetWord =
-        gameState.currentRound.currentPhase.index === 3
-          ? gameState.currentRound.redTeamWord || gameState.currentRound.blueTeamWord
-          : '';
+        const newState: GameState = winner
+          ? {
+              ...prev,
+              isPlaying: false,
+              winner,
+            }
+          : {
+              ...prev,
+              scores: newScores,
+              currentRound: {
+                ...prev.currentRound,
+                index: prev.currentRound.index + 1,
+                currentPhase: {
+                  index: nextPhaseIndex,
+                  name: PHASE_NAMES[nextPhaseIndex],
+                  status: "En cours",
+                },
+              },
+            };
 
-      decrementGuesses();
-      guessAttempted('disciple', word, word === targetWord);
-
-      if (word === targetWord) {
-        handlePhaseProceed();
-      } else if (remainingGuesses - 1 <= 0) {
-        handlePhaseProceed();
-      }
+        socket.emit("gameStateUpdate", { roomCode, gameState: newState });
+        return newState;
+      });
     },
-    [gameState, decrementGuesses, guessAttempted, handlePhaseProceed]
+    [socket, roomCode, gameParameters]
   );
 
   // --------------------------------------------------
-  // 🧮 Vérifie la fin du jeu (max score atteint)
-  // --------------------------------------------------
-  const checkGameOver = useCallback(() => {
-    const maxScore = parameters.ParametersPointsMaxScore;
-    return gameState.scores.red >= maxScore || gameState.scores.blue >= maxScore;
-  }, [gameState.scores, parameters.ParametersPointsMaxScore]);
-
-  // --------------------------------------------------
-  // 🧨 Réinitialiser la partie (mais garder les règles)
+  // 🔁 Réinitialiser complètement le jeu
   // --------------------------------------------------
   const resetGame = useCallback(() => {
-    setGameState((prev) => ({
-      ...prev,
-      isPlaying: false,
-      currentRound: {
-        index: 1,
-        phases: [],
-        currentPhase: { index: 0, name: 'En attente', status: 'En attente' },
-        redTeamWord: '',
-        blueTeamWord: '',
-        redTeamForbiddenWords: [],
-        blueTeamForbiddenWords: [],
-      },
-      scores: { red: 0, blue: 0 },
-      remainingGuesses: parameters.ParametersTeamMaxPropositions,
-    }));
-    resetTimer();
-  }, [setGameState, resetTimer, parameters]);
+    if (!socket || !roomCode) return;
+
+    console.log("♻️ Réinitialisation du jeu");
+    timer.resetTimer();
+
+    const newState = { ...defaultGameState };
+    setGameState(newState);
+    socket.emit("gameStateUpdate", { roomCode, gameState: newState });
+  }, [socket, roomCode, timer]);
 
   // --------------------------------------------------
-  // 🏁 Fin de partie (détermine le gagnant)
+  // 🛰️ Synchronisation avec le serveur
   // --------------------------------------------------
-  const endGame = useCallback(() => {
-    setGameState((prev) => ({
-      ...prev,
-      isPlaying: false,
-      winner: prev.scores.red > prev.scores.blue ? 'red' : prev.scores.blue > prev.scores.red ? 'blue' : 'tie',
-    }));
-  }, [setGameState]);
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.off("gameStateUpdate").on("gameStateUpdate", (serverState: GameState) => {
+      console.log("📡 gameStateUpdate reçu →", serverState);
+      setGameState(serverState);
+    });
+
+    return () => {
+      socket.off("gameStateUpdate");
+    };
+  }, [socket]);
 
   // --------------------------------------------------
-  // 📦 Retour du hook
+  // 🔙 Retour du hook
   // --------------------------------------------------
   return {
     gameState,
-    timerState,
-    history,
-    actions: {
-      startGame: handleGameStart,
-      pauseGame,
-      resumeGame,
-      nextRound,
-      setWord,
-      addForbiddenWord,
-      removeForbiddenWord,
-      handleGuess,
-      checkGameOver,
-      resetToWaitingPhase,
-      resetGame,
-      endGame,
-    },
-    timer: {
-      getCurrentTime,
-      pauseTimer,
-      resumeTimer,
-      resetTimer,
-    },
+    startGame,
+    pauseGame,
+    updateScore,
+    resetGame,
+    timer, // ⏱️ utilisé dans RoomCreated
   };
-};
+}

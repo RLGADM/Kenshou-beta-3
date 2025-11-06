@@ -1,100 +1,65 @@
 // src/components/SocketContext.tsx
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { io, Socket } from 'socket.io-client';
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
+import { io, Socket } from "socket.io-client";
+import { ensureUserToken } from "@/utils/userToken";
 
 interface SocketContextValue {
   socket: Socket | null;
   isConnected: boolean;
-  isConnecting: boolean;
 }
 
 const SocketContext = createContext<SocketContextValue | null>(null);
 
-function getServerUrl(): string {
-  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-  if (isLocalhost) return 'http://localhost:3000';
-  const envUrl = (import.meta as any).env?.VITE_SERVER_URL?.trim();
-  if (envUrl) return envUrl;
-  return 'https://kenshou-beta-3.onrender.com';
-}
-
-export function SocketProvider({ children }: { children: React.ReactNode }) {
-  const serverUrl = getServerUrl();
+export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const socketRef = useRef<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
+  console.log("🧩 SocketProvider mounted");
+
 
   useEffect(() => {
-    if (socketRef.current) return; // éviter double init (React.StrictMode)
+    const isLocal = window.location.hostname.includes("localhost");
+    const serverUrl = isLocal
+      ? "http://localhost:3000"
+      : import.meta.env.VITE_SERVER_URL ?? "https://kenshou-beta-3.onrender.com";
 
-    const userToken = localStorage.getItem('userToken') || undefined;
-
-    console.log(
-      `🌐 Tentative de connexion Socket.IO → ${serverUrl} ${serverUrl.includes('localhost') ? '(local)' : '(prod)'}`
-    );
-
-    // ✅ pingInterval / pingTimeout ne sont PAS des options client, retirés
-    socketRef.current = io(serverUrl, {
-      autoConnect: false,
-      transports: ['websocket', 'polling'],
-      timeout: 60000,
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
+    const userToken = ensureUserToken();
+    const socket = io(serverUrl, {
+      transports: ["websocket", "polling"],
       auth: { userToken },
-      path: '/socket.io',
-      secure: serverUrl.startsWith('https'),
-      withCredentials: true,
     });
 
-    const s = socketRef.current;
+    socketRef.current = socket;
 
-    const onConnect = () => {
-      console.log('✅ Connecté à Socket.IO (', serverUrl, ')');
+    socket.on("connect", () => {
       setIsConnected(true);
-      setIsConnecting(false);
-    };
+      console.log(`✅ Connecté à Socket.IO (${serverUrl})`);
+    });
 
-    const onDisconnect = (reason: string) => {
-      console.warn('🔴 Déconnecté du serveur', reason);
+    socket.on("disconnect", (reason) => {
       setIsConnected(false);
-    };
+      console.warn(`🔴 Déconnecté du serveur (${reason})`);
+    });
 
-    const onConnectError = (err: any) => {
-      console.error('❌ Erreur de connexion :', err?.message ?? err);
+    socket.on("connect_error", (err) => {
       setIsConnected(false);
-      setIsConnecting(false);
-    };
-
-    s.on('connect', onConnect);
-    s.on('disconnect', onDisconnect);
-    s.on('connect_error', onConnectError);
-
-    setIsConnecting(true);
-    s.connect();
+      console.error("❌ Erreur de connexion :", err.message);
+    });
 
     return () => {
-      s.off('connect', onConnect);
-      s.off('disconnect', onDisconnect);
-      s.off('connect_error', onConnectError);
-      try {
-        s.close();
-        console.log('🧹 Fermeture de la connexion Socket.IO');
-      } catch {}
-      socketRef.current = null;
+      socket.disconnect();
+      console.log("🧹 Socket.IO déconnecté proprement");
     };
   }, []);
 
   return (
-    <SocketContext.Provider value={{ socket: socketRef.current, isConnected, isConnecting }}>
+    <SocketContext.Provider value={{ socket: socketRef.current, isConnected }}>
       {children}
     </SocketContext.Provider>
   );
-}
+};
 
-export function useSocketContext(): SocketContextValue {
+export const useSocketContext = (): SocketContextValue => {
   const context = useContext(SocketContext);
-  if (!context) throw new Error('useSocketContext must be used within a SocketProvider');
+  if (!context) throw new Error("useSocketContext must be used within a SocketProvider");
   return context;
-}
+};

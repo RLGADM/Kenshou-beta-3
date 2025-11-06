@@ -42,7 +42,7 @@ const Home: React.FC = () => {
   // 🔁 Navigation automatique si joueur déjà en salle
   // --------------------------------------------------
   useEffect(() => {
-    if (inRoom && roomCode && localStorage.getItem('hasLeftRoom') !== 'true') {
+    if (inRoom && roomCode && localStorage.getItem('hasLeftRoom') !== 'false') {
       navigate(`/room/${roomCode}`);
     }
   }, [inRoom, roomCode, navigate]);
@@ -79,16 +79,16 @@ const Home: React.FC = () => {
   // 🎨 Rendu JSX
   // --------------------------------------------------
   return (
-    <div
-      className="min-h-screen relative overflow-hidden"
-      style={{ background: 'linear-gradient(to bottom right, #00355a, #8accfd)' }}
-    >
-      {/* 🔹 Modal de configuration de partie */}
-      <GameConfigModal
-        isOpen={isConfigModalOpen}
-        onClose={() => setConfigModalOpen(false)}
-        onConfirm={(mode, params) => handleConfigConfirm(username, mode, params)}
-      />
+<div
+    className="min-h-screen relative overflow-hidden"
+    style={{ background: "linear-gradient(to bottom right, #00355a, #8accfd)" }}
+  >
+    {/* 🔹 Modal de configuration de partie */}
+    <GameConfigModal
+      isOpen={isConfigModalOpen}
+      onClose={() => setConfigModalOpen(false)}
+      onConfirm={(parameters) => handleConfigConfirm(parameters)}
+    />
 
       {/* 🔹 Indicateur de connexion serveur */}
       <div className="absolute top-4 right-4 z-20">

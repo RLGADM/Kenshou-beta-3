@@ -2,26 +2,37 @@
 // 🧩 RoomCreated — Page principale d'une salle de jeu Kensho
 // --------------------------------------------------
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { toast } from 'react-hot-toast';
-import { Copy, LogOut, Users, Play, Pause, Timer, Trophy, History, Target, Crown } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { toast } from "react-hot-toast";
+import {
+  Copy,
+  LogOut,
+  Users,
+  Play,
+  Pause,
+  Timer,
+  Trophy,
+  History,
+  Target,
+  Crown,
+} from "lucide-react";
 
 // --------------------------------------------------
 // 📦 Imports internes (hooks, utils, types)
 // --------------------------------------------------
-import { copyRoomLink } from '@/hooks/copyLink';
-import { useRoomCreatedMain } from '@/hooks/roomcreated/useRoomCreatedMain';
-import { useRoomGameLogic } from '@/hooks/room/useRoomGameLogic';
-import { useRoomEvents } from '@/hooks/app/useRoomEvents';
-import { useRoomUIStates } from '@/hooks/roomcreated/useRoomUIStates';
-import { getDefaultParameters } from '@/utils/defaultParameters';
-import type { User } from '@/types';
+import { copyRoomLink } from "@/hooks/copyLink";
+import { useRoomCreatedMain } from "@/hooks/roomcreated/useRoomCreatedMain";
+import { useRoomGameLogic } from "@/hooks/room/useRoomGameLogic";
+import { useRoomEvents } from "@/hooks/app/useRoomEvents";
+import { useRoomUIStates } from "@/hooks/roomcreated/useRoomUIStates";
+import { getDefaultParameters } from "@/utils/defaultParameters";
+import type { User } from "@/types";
 
 // --------------------------------------------------
 // 📦 Modals
 // --------------------------------------------------
-import PlayersModal from '@/components/modals/PlayersModal';
+import PlayersModal from "@/components/modals/PlayersModal";
 
 // --------------------------------------------------
 // 🔹 Composant principal
@@ -32,36 +43,34 @@ const RoomCreated: React.FC = () => {
 
   // --- Hooks principaux
   const { inRoom, currentRoom } = useRoomEvents();
-  const { currentUser, permissions, proposal, setProposal, setCopied, sendProposal, handleLeaveRoom } =
-    useRoomCreatedMain();
+  const {
+    currentUser,
+    permissions,
+    proposal,
+    setProposal,
+    setCopied,
+    sendProposal,
+    handleLeaveRoom,
+  } = useRoomCreatedMain();
 
   const { setShowResetModal } = useRoomUIStates();
 
-  // --- Sécurité : rediriger si pas de room
+  // --- Redirection si pas de room active
   useEffect(() => {
     if (!inRoom || !currentRoom) {
-      navigate('/');
+      navigate("/");
     }
   }, [inRoom, currentRoom, navigate]);
 
-  // --- Fallback paramètres
+  // --- Paramètres du jeu
   const gameParameters = currentRoom?.gameParameters ?? getDefaultParameters();
 
   // --- Logique de jeu
-  const gameLogic = useRoomGameLogic(gameParameters);
+  const gameLogic = useRoomGameLogic(currentRoom?.code, gameParameters);
   const { gameState } = gameLogic;
 
   // --- États UI
   const [showPlayersModal, setShowPlayersModal] = useState(false);
-
-  // --- Chargement
-  if (!currentRoom || !currentUser) {
-    return (
-      <div className="bg-gradient-to-br from-slate-800 via-slate-700 to-slate-900 min-h-screen flex items-center justify-center">
-        <div className="text-white text-xl">Chargement de la room...</div>
-      </div>
-    );
-  }
 
   // --------------------------------------------------
   // 🔹 Données dérivées
@@ -70,48 +79,49 @@ const RoomCreated: React.FC = () => {
   const currentRound = gameState.currentRound;
   const currentPhase = currentRound.currentPhase;
 
-  const userRole = currentUser.role ?? 'spectator';
-  const isDisciple = userRole === 'disciple';
-  const isCurrentTeamTurn = true; // placeholder (à relier plus tard à la logique d’équipe)
+  const userRole = currentUser?.role ?? "spectator";
+  const isDisciple = userRole === "disciple";
+  const isCurrentTeamTurn = true; // TODO : à relier à la logique d’équipe
 
-  const redTeam = currentRoom.users?.filter((u: User) => u.team === 'red') ?? [];
-  const blueTeam = currentRoom.users?.filter((u: User) => u.team === 'blue') ?? [];
+  const redTeam = currentRoom?.users?.filter((u: User) => u.team === "red") ?? [];
+  const blueTeam = currentRoom?.users?.filter((u: User) => u.team === "blue") ?? [];
 
   const phaseTitles: Record<number, string> = {
-    1: 'Choisissez votre mot',
-    2: 'Choisissez vos interdits',
-    3: 'Préparez votre laïus !',
+    1: "Choisissez votre mot",
+    2: "Choisissez vos interdits",
+    3: "Préparez votre laïus !",
   };
 
   const phaseDisplay =
-    currentPhase.status === 'En attente'
-      ? 'En attente...'
-      : `Phase ${currentPhase.index} - ${phaseTitles[currentPhase.index] ?? ''}`;
+    currentPhase.status === "En attente"
+      ? "En attente..."
+      : `Phase ${currentPhase.index} - ${
+          phaseTitles[currentPhase.index] ?? ""
+        }`;
 
   // --------------------------------------------------
-  // 🔹 Actions principales
+  // 🔹 Actions
   // --------------------------------------------------
-  const startGame = useCallback(() => gameLogic.actions.startGame(), [gameLogic]);
-  const pauseGame = useCallback(() => gameLogic.actions.pauseGame(), [gameLogic]);
-
   const handleProposalSend = () => {
     if (!proposal.trim()) return;
-    gameLogic.actions.handleGuess(proposal.trim());
+    gameLogic.updateScore("red"); // exemple de test temporaire
     sendProposal(proposal.trim());
-    setProposal('');
+    setProposal("");
   };
 
   const handleCopyLink = () => {
+    if (!currentRoom?.code) return;
     copyRoomLink(currentRoom.code);
     setCopied(true);
-    toast.success('Lien de la salle copié !');
+    toast.success("Lien de la salle copié !");
     setTimeout(() => setCopied(false), 2000);
   };
 
   // --------------------------------------------------
   // 🎨 Rendu principal
   // --------------------------------------------------
-  const panel = 'bg-slate-800 rounded-xl p-6 shadow-md border border-slate-700';
+  const panel =
+    "bg-slate-800 rounded-xl p-6 shadow-md border border-slate-700";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-800 via-slate-700 to-slate-900">
@@ -129,7 +139,9 @@ const RoomCreated: React.FC = () => {
             {/* Code salon */}
             <div className="flex items-center space-x-2 bg-slate-700/40 border border-slate-500 text-white rounded-full px-4 py-2">
               <span>Salon :</span>
-              <span className="text-yellow-400 font-bold">{routeRoomCode ?? currentRoom.code}</span>
+              <span className="text-yellow-400 font-bold">
+                {routeRoomCode ?? currentRoom?.code}
+              </span>
             </div>
 
             {/* Copier URL */}
@@ -147,7 +159,7 @@ const RoomCreated: React.FC = () => {
               className="flex items-center space-x-2 bg-slate-700/40 border border-slate-500 text-white rounded-full px-4 py-2 hover:bg-slate-600/60 transition-all duration-200"
             >
               <Users className="w-4 h-4" />
-              <span>{currentRoom.users?.length ?? 0} joueurs</span>
+              <span>{currentRoom?.users?.length ?? 0} joueurs</span>
             </button>
           </div>
 
@@ -156,7 +168,9 @@ const RoomCreated: React.FC = () => {
             {permissions.canStartGame && (
               <>
                 <button
-                  onClick={isGameActive ? pauseGame : startGame}
+                  onClick={
+                    isGameActive ? gameLogic.pauseGame : gameLogic.startGame
+                  }
                   className="flex items-center space-x-2 bg-slate-700/40 border border-slate-500 text-white rounded-full px-4 py-2 hover:bg-slate-600/60 transition-all duration-200"
                 >
                   {isGameActive ? (
@@ -173,7 +187,7 @@ const RoomCreated: React.FC = () => {
                 </button>
 
                 <button
-                  onClick={() => setShowResetModal(true)}
+                  onClick={() => gameLogic.resetGame()}
                   className="flex items-center space-x-2 bg-slate-700/40 border border-slate-500 text-white rounded-full px-4 py-2 hover:bg-slate-600/60 transition-all duration-200"
                 >
                   <Timer className="w-4 h-4" />
@@ -200,14 +214,21 @@ const RoomCreated: React.FC = () => {
             <div className={panel}>
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h2 className="text-2xl font-bold text-white mb-2">Zone de jeu</h2>
+                  <h2 className="text-2xl font-bold text-white mb-2">
+                    Zone de jeu
+                  </h2>
                   <p className="text-white/60">{phaseDisplay}</p>
                 </div>
 
+                {/* TIMER */}
                 <div className="bg-slate-700/50 rounded-lg p-2 flex items-center space-x-3">
                   <Timer className="w-5 h-5 text-white/60" />
                   <div className="text-lg font-mono text-white">
-                    {gameLogic.timer.getCurrentTime().toString().padStart(2, '0')}s
+                    {gameLogic.timer
+                      .getCurrentTime()
+                      .toString()
+                      .padStart(2, "0")}
+                    s
                   </div>
                 </div>
               </div>
@@ -264,9 +285,23 @@ const RoomCreated: React.FC = () => {
 // --------------------------------------------------
 // 🔹 Sous-composants internes
 // --------------------------------------------------
-const TeamBlock = ({ title, team, users }: { title: string; team: 'red' | 'blue'; users: User[] }) => (
+const TeamBlock = ({
+  title,
+  team,
+  users,
+}: {
+  title: string;
+  team: "red" | "blue";
+  users: User[];
+}) => (
   <div>
-    <h3 className={`text-lg font-semibold ${team === 'red' ? 'text-red-400' : 'text-blue-400'} mb-4`}>{title}</h3>
+    <h3
+      className={`text-lg font-semibold ${
+        team === "red" ? "text-red-400" : "text-blue-400"
+      } mb-4`}
+    >
+      {title}
+    </h3>
     <div className="space-y-4">
       {users.map((user) => (
         <div
@@ -276,13 +311,21 @@ const TeamBlock = ({ title, team, users }: { title: string; team: 'red' | 'blue'
           <div className="flex items-center space-x-3">
             <div
               className={`w-8 h-8 ${
-                team === 'red' ? 'bg-red-500/20' : 'bg-blue-500/20'
+                team === "red" ? "bg-red-500/20" : "bg-blue-500/20"
               } rounded-full flex items-center justify-center`}
             >
-              {user.role === 'sage' ? (
-                <Crown className={`w-4 h-4 ${team === 'red' ? 'text-red-400' : 'text-blue-400'}`} />
+              {user.role === "sage" ? (
+                <Crown
+                  className={`w-4 h-4 ${
+                    team === "red" ? "text-red-400" : "text-blue-400"
+                  }`}
+                />
               ) : (
-                <Target className={`w-4 h-4 ${team === 'red' ? 'text-red-400' : 'text-blue-400'}`} />
+                <Target
+                  className={`w-4 h-4 ${
+                    team === "red" ? "text-red-400" : "text-blue-400"
+                  }`}
+                />
               )}
             </div>
             <span className="text-white">{user.username}</span>
@@ -301,12 +344,16 @@ const ScorePanel = ({ panel, gameLogic }: any) => (
     </h3>
     <div className="flex justify-between items-center">
       <div className="text-center">
-        <div className="text-2xl font-bold text-red-400">{gameLogic.gameState.scores.red}</div>
+        <div className="text-2xl font-bold text-red-400">
+          {gameLogic.gameState.scores.red}
+        </div>
         <div className="text-white/60 text-sm">Rouge</div>
       </div>
       <div className="text-white/40">VS</div>
       <div className="text-center">
-        <div className="text-2xl font-bold text-blue-400">{gameLogic.gameState.scores.blue}</div>
+        <div className="text-2xl font-bold text-blue-400">
+          {gameLogic.gameState.scores.blue}
+        </div>
         <div className="text-white/60 text-sm">Bleu</div>
       </div>
     </div>
@@ -320,19 +367,19 @@ const HistoryPanel = ({ panel, gameLogic }: any) => (
       <span>Historique</span>
     </h3>
     <div className="space-y-2 max-h-80 overflow-y-auto">
-      {gameLogic.history.map((entry: any, index: number) => (
+      {gameLogic.history?.map((entry: any, index: number) => (
         <div
           key={index}
           className={`p-2 rounded ${
-            entry.type === 'game'
-              ? 'bg-purple-500/20 text-purple-200'
-              : entry.type === 'phase'
-                ? 'bg-blue-500/20 text-blue-200'
-                : entry.type === 'team'
-                  ? 'bg-green-500/20 text-green-200'
-                  : entry.type === 'victory'
-                    ? 'bg-yellow-500/20 text-yellow-200'
-                    : 'bg-slate-700/50 text-white/60'
+            entry.type === "game"
+              ? "bg-purple-500/20 text-purple-200"
+              : entry.type === "phase"
+              ? "bg-blue-500/20 text-blue-200"
+              : entry.type === "team"
+              ? "bg-green-500/20 text-green-200"
+              : entry.type === "victory"
+              ? "bg-yellow-500/20 text-yellow-200"
+              : "bg-slate-700/50 text-white/60"
           }`}
         >
           {entry.message}

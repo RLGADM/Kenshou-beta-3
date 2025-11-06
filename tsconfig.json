@@ -14,7 +14,6 @@
     "paths": {
       "@frontend/*": ["frontend/src/*"],
       "@backend/*": ["backend/src/*"],
-
       "@/*": ["frontend/src/*"],
       "@hooks/*": ["frontend/src/hooks/*"],
       "@utils/*": ["frontend/src/utils/*"],

@@ -1,7 +1,20 @@
 {
-  "extends": "./tsconfig.app.json",
   "compilerOptions": {
-    "baseUrl": "./src",
+    /* 🔹 Utilisation du JSX avec React 17+ (nécessaire pour .tsx) */
+    "jsx": "react-jsx",
+
+    /* 🔹 Support des modules modernes */
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "target": "ESNext",
+    // Autres options de compilation ici
+    "useDefineForClassFields": true,
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": "src",
     "paths": {
       "@/*": ["*"]
     }

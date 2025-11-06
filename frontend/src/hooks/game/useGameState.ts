@@ -23,7 +23,7 @@ const createInitialGameState = (parameters: GameParameters): GameState => ({
   currentRound: createInitialGameRound(),
   scores: { red: 0, blue: 0 },
   remainingGuesses: parameters.ParametersTeamMaxPropositions,
-  winner: undefined,
+  winner: null,
 });
 
 // --------------------------------------------------

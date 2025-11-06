@@ -1,38 +1,59 @@
-import * as Game from '@/types/game';
 // --------------------------------------------------
-// 📘 Types de base pour Kensho
+// 📘 types/game.ts — Typages centraux du projet Kenshou
 // --------------------------------------------------
 
+// --------------------------------------------------
 // 🧍 Utilisateur
-// ✅ User = 100% calé sur ce que tu m’as dit
+// --------------------------------------------------
 export interface User {
-  id: string; // = userToken
-  userToken: string; //= userToken 2
+  /** Identifiant unique (UUID stocké dans localStorage) */
+  id: string;
+  userToken: string;
   username: string;
-  team: 'red' | 'blue' | 'spectator';
-  role: 'sage' | 'disciple' | 'spectator';
-  isAdmin: true;
+
+  /** Rôle et équipe */
+  team: "red" | "blue" | "spectator";
+  role: "sage" | "disciple" | "spectator";
+
+  /** Permissions */
+  isAdmin: boolean;
+
+  /** Infos réseau optionnelles */
   socketId?: string;
   room?: string;
 }
 
+// --------------------------------------------------
 // 💬 Message (chat ou système)
+// --------------------------------------------------
+const now = globalThis.Date.now();
+
 export interface Message {
   id: string;
   username: string;
   message: string;
-  timestamp: Date;
+  timestamp: number;
 }
-// ⚙️ Paramètres de jeu (configurable avant la partie)
+
+// --------------------------------------------------
+// ⚙️ Paramètres de jeu (configurables avant partie)
+// --------------------------------------------------
 export interface GameParameters {
+  /** Durées des phases (en secondes) */
   ParametersTimeFirst: number;
   ParametersTimeSecond: number;
   ParametersTimeThird: number;
+
+  /** Gestion d’équipe et rerolls */
   ParametersTeamReroll: number;
   ParametersTeamMaxForbiddenWords: number;
   ParametersTeamMaxPropositions: number;
+
+  /** Règles de points et conditions de victoire */
   ParametersPointsMaxScore: number;
-  ParametersPointsRules: 'no-tie' | 'tie';
+  ParametersPointsRules: "no-tie" | "tie"; // tie = égalité possible
+
+  /** Sélection du dictionnaire */
   ParametersWordsListSelection: {
     veryCommon: boolean;
     lessCommon: boolean;
@@ -40,48 +61,125 @@ export interface GameParameters {
   };
 }
 
-// 🎯 Phase de jeu (0, 1, 2, 3)
+// --------------------------------------------------
+// 🎯 Phase de jeu
+// --------------------------------------------------
 export interface GamePhase {
-  index: 0 | 1 | 2 | 3; // 0 = attente / pré-phase
-  name: 'En attente' | 'Choix du mot' | 'Mots interdits' | 'Oratoire';
-  status: 'En attente' | 'En cours' | 'Finie';
-  remainingTime?: number; // temps restant en secondes
+  index: 0 | 1 | 2 | 3; // 0 = attente, 1 = choix mot, 2 = interdits, 3 = discours
+  name: "En attente" | "Choix du mot" | "Mots interdits" | "Oratoire";
+  status: "En attente" | "En cours" | "Finie";
+  remainingTime?: number;
 }
 
+// --------------------------------------------------
 // 🏁 Round complet
+// --------------------------------------------------
 export interface GameRound {
-  index: number; // numéro du round
+  index: number;
   phases: GamePhase[];
   currentPhase: GamePhase;
+
+  /** Mots choisis */
   redTeamWord: string;
   blueTeamWord: string;
+
+  /** Mots interdits */
   redTeamForbiddenWords: string[];
   blueTeamForbiddenWords: string[];
 }
 
-// 🧩 État complet du jeu
+// --------------------------------------------------
+// 🧩 État global du jeu (GameState)
+// --------------------------------------------------
 export interface GameState {
-  //Mise à zéro des mots avabnt le début d'une nouvelle manche
+  /** Partie active */
   isPlaying: boolean;
+
+  /** Gagnant actuel ou null si aucun */
+  winner: "red" | "blue" | "tie" | null;
+
+  /** Round et phases */
   currentRound: GameRound;
-  scores: { red: number; blue: number };
+
+  /** Scores cumulés */
+  scores: {
+    red: number;
+    blue: number;
+  };
+
+  /** Nombre d’essais restants */
   remainingGuesses: number;
-  winner?: 'red' | 'blue' | 'tie';
 }
 
-// 🏠 Salle de base (Room)
+// --------------------------------------------------
+// 🏠 Salle (Room)
+// --------------------------------------------------
 export interface Room {
+  /** Code unique de la room (6 caractères) */
   code: string;
+
+  /** Mode de jeu (standard/custom/arcade) */
+  mode: "standard" | "custom" | "arcade";
+
+  /** Liste des joueurs et messages */
   users: User[];
   messages: Message[];
-  gameParameters: GameParameters; // Règles statiques (création)
-  gameState: GameState; // État dynamique (partie en cours)
+
+  /** Config & état du jeu */
+  gameParameters: GameParameters;
+  gameState: GameState;
+
+  /** Horodatage de création */
+  createdAt: number;
 }
 
-// 🧩 GameRoom — version enrichie utilisée côté jeu
+// --------------------------------------------------
+// 🧩 GameRoom — version enrichie utilisée pendant la partie
+// --------------------------------------------------
 export interface GameRoom extends Room {
   redTeam: User[];
   blueTeam: User[];
   roundsPlayed: number;
-  winner?: 'red' | 'blue' | 'tie';
+
+  /** Gagnant global de la partie */
+  winner?: "red" | "blue" | "tie";
 }
+
+// --------------------------------------------------
+// 🔸 Constantes par défaut utiles côté client
+// --------------------------------------------------
+export const defaultGameParameters: GameParameters = {
+  ParametersTimeFirst: 60,
+  ParametersTimeSecond: 45,
+  ParametersTimeThird: 30,
+  ParametersTeamReroll: 1,
+  ParametersTeamMaxForbiddenWords: 3,
+  ParametersTeamMaxPropositions: 3,
+  ParametersPointsMaxScore: 5,
+  ParametersPointsRules: "tie",
+  ParametersWordsListSelection: {
+    veryCommon: true,
+    lessCommon: true,
+    rarelyCommon: false,
+  },
+};
+
+export const defaultGameState: GameState = {
+  isPlaying: false,
+  winner: null,
+  currentRound: {
+    index: 0,
+    phases: [],
+    currentPhase: {
+      index: 0,
+      name: "En attente",
+      status: "En attente",
+    },
+    redTeamWord: "",
+    blueTeamWord: "",
+    redTeamForbiddenWords: [],
+    blueTeamForbiddenWords: [],
+  },
+  scores: { red: 0, blue: 0 },
+  remainingGuesses: 3,
+};
